@@ -31,7 +31,6 @@ Preventivo        revisiones programadas: vencido (rojo), hoy (amarillo) y próx
                   "Posponer" pide motivo y nueva fecha.
 Equipos           catálogo por salón con foto; salones y zonas.
 Reportes gerencia lo que ve Control Gerencia (solo lectura): solo reportes de instructores de Fitness.
-Al final de Reportes hay "Datos de prueba": cargar y borrar reportes de ejemplo.
 
 CÓMO SUBIRLA
 ------------
@@ -71,11 +70,24 @@ REGLAS DE FIREBASE
 ------------------
 Ver reglas-firebase.txt (se publican después de comprobar el acceso).
 
+INVENTARIO REAL DEL SALÓN DE SPINNING (7-oct-2026)
+--------------------------------------------------
+Origen: Inventario_Spinning_Salon_1.xlsx (27 bicicletas Spinner Ride: 21 numeradas, 5 sin número pintado y la del instructor).
+Archivos: js/inventario.js (los datos) e img/equipos/spinning-XX.jpg (una foto por bicicleta, ya reducida).
+Cómo cargarlo (una sola vez, con sesión iniciada): Equipos -> tarjeta "Inventario real del Salón de Spinning" ->
+"Cargar inventario de Spinning". Crea los 27 equipos en el Salon Spinning (si el salón no existe, lo crea) y, en el mismo paso,
+borra lo ficticio que haya quedado de las pruebas: equipos y revisiones de ejemplo y los reportes hechos sobre ellos.
+Los ids son fijos (spin-02, spin-sn1, spin-instructor...): volver a cargarlo no duplica y los QR no cambian.
+La ficha de cada equipo muestra su hallazgo, nivel, corrección requerida y material necesario del levantamiento.
+Bicicletas sin número: se llaman "Bicicleta sin número 1" a "5". Cuando les pinten el número, cámbienles el nombre en
+Equipos -> abrir -> Editar equipo (el QR no cambia).
+Se quitaron los botones de datos de ejemplo (catálogo y reportes de ejemplo).
+
 PRIMER USO
 ----------
 1) Equipos -> "Cargar los salones de Fitness": Salón 1, Salon Spinning, Salon Yoga, Salon 2, Salon3, Box y
    CrossFit, con los mismos nombres que en Control Fitness.
-2) Equipos -> Agregar: nombre, salón y nombre del archivo de foto (o "Cargar catálogo de ejemplo" para probar).
+2) Equipos -> Agregar: nombre, salón y nombre del archivo de foto.
 3) Preventivo -> Agregar revisión: qué se revisa, dónde, frecuencia y próxima fecha.
 
 CÓDIGOS QR DE EQUIPOS

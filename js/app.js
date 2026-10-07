@@ -310,11 +310,31 @@ function prevCard(p, ro){
 function empiezaAqui(){
   if (lista('salones').length || lista('equipos').length) return '';
   return '<div class="card"><div class="h2 sm" style="margin-top:0">Empieza aquí</div><div class="sub">Todavía no hay salones ni equipos. Primero da de alta los salones, y luego los equipos de cada uno. Así a cada instructor solo le aparecen los equipos de su salón.</div>' +
-    '<div class="stack"><button class="btn primary" data-a="salonesFitness">Cargar los salones de Fitness</button><button class="btn" data-a="salones">Dar de alta salones a mano</button><button class="btn" data-a="ejemplo">Cargar catálogo de ejemplo</button></div></div>';
+    '<div class="stack"><button class="btn primary" data-a="salonesFitness">Cargar los salones de Fitness</button><button class="btn" data-a="salones">Dar de alta salones a mano</button></div></div>';
 }
-function pruebaCard(){
-  return '<div class="h2 sm">Datos de prueba</div><div class="card"><div class="sub" style="margin:0 0 10px">Para probar sin esperar. “Cargar reportes de ejemplo” crea cuatro reportes en distintos estados. “Borrar datos de prueba” quita los reportes de ejemplo y los equipos y revisiones del catálogo de ejemplo. No toca los salones, ni los reportes reales de los instructores.</div>' +
-    '<div class="btns" style="margin-top:0"><button class="btn" data-a="reportesEjemplo">Cargar reportes de ejemplo</button><button class="btn danger" data-a="borraPrueba">Borrar datos de prueba</button></div></div>';
+/* ---------- inventario real de Spinning ---------- */
+function nrm(t){ return String(t == null ? '' : t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+function salonSpinningId(){
+  var hit = lista('salones').filter(function(x){ return nrm(x.nombre).indexOf('spinning') >= 0; })[0];
+  return hit ? hit.id : 'salon-spinning';
+}
+function invFaltan(){ return (typeof INVENTARIO_SPINNING !== 'undefined' ? INVENTARIO_SPINNING : []).filter(function(x){ return !(DB.equipos || {})[x.id]; }); }
+function esPrueba(r){ return r.profId === 'ejemplo' || r.profId === 'prueba'; }
+/* lo ficticio que pudo quedar de las pruebas: equipos y revisiones de ejemplo, y los reportes hechos sobre ellos */
+function ejemplos(){
+  var eq = lista('equipos').filter(function(e){ return e.ejemplo; }), ids = {}; eq.forEach(function(e){ ids[e.id] = 1; });
+  var rep = lista('reportes').filter(function(r){ return esPrueba(r) || ids[r.equipoId]; });
+  var his = lista('historial').filter(function(r){ return esPrueba(r) || ids[r.equipoId]; });
+  return { eq:eq, prev:lista('preventivo').filter(function(p){ return p.ejemplo; }), rep:rep, his:his, n: eq.length + rep.length + his.length };
+}
+function inventarioCard(){
+  var falta = invFaltan(), ej = ejemplos();
+  if (!falta.length && !ej.n) return '';
+  var tot = typeof INVENTARIO_SPINNING !== 'undefined' ? INVENTARIO_SPINNING.length : 0;
+  return '<div class="card"><div class="h2 sm" style="margin-top:0">Inventario real del Salón de Spinning</div>' +
+    '<div class="sub" style="margin:0 0 10px">' + (falta.length ? 'Trae las ' + tot + ' bicicletas del levantamiento, cada una con su foto, hallazgo y corrección requerida.' : 'El inventario de Spinning ya está cargado.') +
+    (ej.n ? ' También quita los datos de ejemplo que quedaron de las pruebas (' + plu(ej.eq.length, 'equipo', 'equipos') + ', ' + plu(ej.rep.length + ej.his.length, 'reporte', 'reportes') + '). No toca los salones.' : '') + '</div>' +
+    '<button class="btn primary block" data-a="invCarga">' + (falta.length ? 'Cargar inventario de Spinning' : 'Quitar datos de ejemplo') + '</button></div>';
 }
 function vReportes(){
   var R = rangoPer(), base = R ? setPeriodo(R) : abiertos(), cnt = { nuevo:0, atencion:0, resuelto:0 };
@@ -341,8 +361,7 @@ function vReportes(){
     '<div class="urgf"><button class="chip' + (ui.urg ? ' on' : '') + '" data-a="urgAbre" aria-expanded="' + ui.urgAbre + '">Urgencia' + (ui.urg ? ': ' + URG_TXT[ui.urg] : '') + (ui.urgAbre ? ' ▴' : ' ▾') + '</button></div>' +
     (ui.urgAbre ? '<div class="chips">' + [['fuera', 'No se puede usar'], ['urgente', 'Urgente'], ['normal', 'Normal']].map(function(f){
       return '<button class="chip' + (ui.urg === f[0] ? ' on' : '') + '" data-a="urg" data-v="' + f[0] + '">' + f[1] + '</button>';
-    }).join('') + '</div>' : '') +
-    pruebaCard();
+    }).join('') + '</div>' : '');
 }
 function vPreventivo(){
   var l = lista('preventivo').sort(function(a, b){ return a.proxima - b.proxima; });
@@ -358,7 +377,7 @@ function vEquipos(){
   var eqs = lista('equipos').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
   var areas = ['Todos'].concat(eqs.map(function(e){ return eqArea(e); }).filter(function(a, i, ar){ return a && ar.indexOf(a) === i; }));
   var l = eqs.filter(function(e){ return ui.areaF === 'Todos' || eqArea(e) === ui.areaF; });
-  return '<div class="btns" style="margin-top:0"><button class="btn primary" data-a="eqNew">' + ic('plus') + ' Agregar equipo</button><button class="btn" data-a="salones">Salones</button><button class="btn" data-a="qrAll">Imprimir QR</button></div>' + empiezaAqui() +
+  return '<div class="btns" style="margin-top:0"><button class="btn primary" data-a="eqNew">' + ic('plus') + ' Agregar equipo</button><button class="btn" data-a="salones">Salones</button><button class="btn" data-a="qrAll">Imprimir QR</button></div>' + inventarioCard() + empiezaAqui() +
     (areas.length > 1 ? '<div class="chips">' + areas.map(function(a){ return '<button class="chip' + (ui.areaF === a ? ' on' : '') + '" data-a="areaF" data-v="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</div>' : '') +
     (l.length ? '<div class="eqgrid">' + l.map(function(e){
       var s = eqEstado(e.id);
@@ -436,6 +455,15 @@ function sheetPosp(){
     '<label class="f"><span>Nueva fecha</span><input type="date" data-f="fecha" min="' + fechaInput(sod(now()) + DAY) + '" value="' + esc(ui.sh.fecha) + '"></label>' +
     '<button class="btn cta block" data-a="prevPospSave">Guardar nueva fecha</button><div class="sub" style="margin-top:10px">Gerencia ve cuántas veces se pospone un preventivo y por qué.</div>';
 }
+function invHTML(e){
+  var v = e && e.inv; if (!v) return '';
+  var n = nrm(v.nivel), c = /alta/.test(n) ? 'bad' : /media/.test(n) ? 'warn' : 'ok';
+  function fila(t, x){ return x ? '<div style="margin-top:6px"><small class="mut">' + t + '</small><div>' + esc(x) + '</div></div>' : ''; }
+  return '<div class="card" style="margin-top:12px"><div class="h2 sm" style="margin:0 0 6px">Inventario' + (e.marca ? ' · ' + esc(e.marca) : '') + '</div>' +
+    (v.nivel ? pill('Nivel ' + v.nivel, c) + (v.intervencion ? ' ' + pill(v.intervencion, 'mut') : '') : '') +
+    fila('Hallazgo', v.hallazgo) + fila('Corrección requerida', v.correccion) + fila('Material necesario', v.material) +
+    '<div class="sub" style="margin:8px 0 0;font-size:12px">Levantamiento del ' + esc(v.fecha || '') + '</div></div>';
+}
 function sheetEq(){
   var raw = DB.equipos[ui.sheet.id]; if (!raw) return '';
   var e = eqById(ui.sheet.id), s = eqEstado(e.id);
@@ -443,6 +471,7 @@ function sheetEq(){
   return mHead(e.nombre) +
     '<div class="eq" style="margin-bottom:12px"><div class="pic">' + ic('img') + esc(e.foto || '') + (e.foto ? '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div></div>' +
     '<div class="sub" style="margin:0 0 6px">' + esc(eqLugar(e)) + ' · ' + esc(eqArea(e)) + '</div>' + pill(s.t, s.c + ' big') +
+    invHTML(raw) +
     '<div class="btns"><button class="btn" data-a="eqEdit" data-v="' + e.id + '">Editar equipo</button><button class="btn" data-a="eqQR" data-v="' + e.id + '">Código QR</button></div>' +
     '<div class="h2 sm">Historial</div>' + (h.length ? '<div class="stack">' + h.map(function(r){
       return '<div class="rep ' + (r.cerrado ? 'verde' : semaforo(r)) + '"><div class="rep-h">' + (r.cerrado ? pill('Cerrado', 'ok big') : pillEstado(r)) + '<span class="go mut" style="font-size:12.5px">' + hace(r.creado) + '</span></div><span class="rep-d">' + esc(r.desc) + '</span>' + (r.diag ? '<small>' + esc(r.diag) + '</small>' : '') + '</div>';
@@ -708,45 +737,23 @@ var A = {
     if (!n) return toast('Los salones de Fitness ya están cargados');
     db.ref().update(up).then(function(){ toast('Salones de Fitness cargados'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
   },
-  /* datos de prueba */
-  ejemplo:function(){
-    if (!confirm('Se agregan equipos y revisiones de ejemplo en los salones de Fitness. Podrás editarlos o eliminarlos. ¿Continuar?')) return;
-    var up = {}, d0 = sod(now());
-    SALONES_FITNESS.forEach(function(f){ up['salones/' + f[0]] = { nombre: f[1], area: f[2] }; });
-    [['Bicicleta spinning 01', 'salon-spinning', 'bici-01.jpg'], ['Bicicleta spinning 02', 'salon-spinning', 'bici-02.jpg'], ['Bicicleta spinning 03', 'salon-spinning', 'bici-03.jpg'],
-     ['Costal de box 1', 'box', 'costal-1.jpg'], ['Rack de pesas', 'crossfit', 'rack-pesas.jpg'], ['Barra olímpica 1', 'crossfit', 'barra-1.jpg'],
-     ['Bocina salón 2', 'salon-2', 'bocina-s2.jpg'], ['Aire acondicionado salón 2', 'salon-2', 'aire-s2.jpg'], ['Espejo salón 1', 'salon-1', 'espejo-s1.jpg'], ['Tapetes de yoga', 'salon-yoga', 'tapetes.jpg']
-    ].forEach(function(e){ up['equipos/' + nuevoId('equipos')] = { nombre:e[0], salonId:e[1], foto:e[2], ejemplo:true }; });
-    [['Bicicletas de spinning', 'Tornillería, pedales y resistencia', 'salon-spinning', 7, d0], ['Costales y soportes', 'Cadenas y anclajes', 'box', 15, d0 - 2 * DAY],
-     ['Aire acondicionado salón 2', 'Limpieza de filtros', 'salon-2', 30, d0], ['Espejos y soportes · salón 1', 'Revisión de anclajes', 'salon-1', 7, d0 + DAY]
-    ].forEach(function(p){ up['preventivo/' + nuevoId('preventivo')] = { titulo:p[0], detalle:p[1], salonId:p[2], freq:p[3], proxima:p[4], posp:[], hist:[], ejemplo:true }; });
-    db.ref().update(up).then(function(){ toast('Catálogo de ejemplo cargado'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
-  },
-  reportesEjemplo:function(){
-    var eqs = lista('equipos').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
-    if (eqs.length < 1) return toast('Primero da de alta equipos o carga el catálogo de ejemplo');
-    var H = 36e5, t = now(), up = {};
-    var m = [
-      ['No enciende, el tablero se queda apagado.', 'fuera', 31 * H, 'nuevo', null],
-      ['Pedal flojo, se mueve al pedalear.', 'normal', 26 * H, 'nuevo', null],
-      ['Distorsiona el sonido.', 'urgente', 9 * H, 'atencion', { diag:'Falta el cable de audio, pendiente de comprar.', compra:true, cambio:false, costo:'450', visto: t - 8 * H }],
-      ['El soporte se mueve.', 'normal', 50 * H, 'resuelto', { diag:'Se cambió el soporte y quedó firme.', compra:false, cambio:true, costo:'', visto: t - 20 * H, resuelto: t - 3 * H }]
-    ];
-    m.forEach(function(x, i){
-      var e = eqs[i % eqs.length], sa = salonById(e.salonId);
-      up['reportes/' + nuevoId('reportes')] = limpia(Object.assign({ equipoId:e.id, desc:x[0], urg:x[1], profId:'ejemplo', prof:'Profesor de ejemplo', area:sa.area, clase:'Clase de ejemplo', salonId:e.salonId, otroLugar:false, creado: t - x[2], estado:x[3] }, x[4] || {}));
+  /* inventario real: carga única (ids fijos, no duplica) y limpieza de lo ficticio */
+  invCarga:function(){
+    var falta = invFaltan(), ej = ejemplos(), sid = salonSpinningId(), up = {};
+    if (!falta.length && !ej.n) return toast('No hay nada que cargar');
+    var txt = (falta.length ? 'Se cargan ' + falta.length + ' bicicletas del Salón de Spinning con sus fotos. ' : '') +
+      (ej.n ? 'Se borran ' + plu(ej.eq.length, 'equipo', 'equipos') + ' de ejemplo, ' + plu(ej.prev.length, 'revisión', 'revisiones') + ' de ejemplo y ' + plu(ej.rep.length + ej.his.length, 'reporte', 'reportes') + ' de prueba (incluidos los hechos sobre equipos de ejemplo). ' : '') + '¿Continuar?';
+    if (!confirm(txt)) return;
+    if (falta.length && !(DB.salones || {})[sid]) up['salones/' + sid] = { nombre:'Salon Spinning', area:'Spinning' };
+    falta.forEach(function(x){
+      up['equipos/' + x.id] = { nombre:x.nombre, salonId:sid, foto:x.foto, marca:x.marca, tipo:x.tipo, origen:'inventario',
+        inv:{ fecha:'2026-10-07', hallazgo:x.hallazgo || '', nivel:x.nivel || '', intervencion:x.intervencion || '', correccion:x.correccion || '', material:x.material || '' } };
     });
-    db.ref().update(up).then(function(){ toast('Reportes de ejemplo cargados'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
-  },
-  borraPrueba:function(){
-    if (!confirm('Se borran los reportes de ejemplo y de prueba, y los equipos y revisiones del catálogo de ejemplo. ¿Continuar?')) return;
-    var up = {}, esPrueba = function(r){ return r.profId === 'ejemplo' || r.profId === 'prueba'; };
-    lista('reportes').filter(esPrueba).forEach(function(r){ up['reportes/' + r.id] = null; });
-    lista('historial').filter(esPrueba).forEach(function(r){ up['historial/' + r.id] = null; });
-    lista('equipos').filter(function(e){ return e.ejemplo; }).forEach(function(e){ up['equipos/' + e.id] = null; });
-    lista('preventivo').filter(function(p){ return p.ejemplo; }).forEach(function(p){ up['preventivo/' + p.id] = null; });
-    if (!Object.keys(up).length) return toast('No hay datos de prueba que borrar');
-    db.ref().update(up).then(function(){ toast('Datos de prueba borrados'); }).catch(function(e){ toast('No se pudo borrar: ' + e.message); });
+    ej.eq.forEach(function(e){ up['equipos/' + e.id] = null; });
+    ej.prev.forEach(function(p){ up['preventivo/' + p.id] = null; });
+    ej.rep.forEach(function(r){ up['reportes/' + r.id] = null; });
+    ej.his.forEach(function(r){ up['historial/' + r.id] = null; });
+    db.ref().update(up).then(function(){ toast(falta.length ? 'Inventario cargado' : 'Datos de ejemplo borrados'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
   }
 };
 document.addEventListener('click', function(e){
