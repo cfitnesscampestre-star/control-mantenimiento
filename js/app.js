@@ -193,6 +193,26 @@ function nuevoId(ruta){ return db ? db.ref(ruta).push().key : 'x' + Math.random(
 var ui = { tab:'reportes', estado:null, urg:null, urgAbre:false, reset:false, per:{ t:'pend' }, carrPausa:!!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches), areaF:'Todos', sh:null, sheet:null, dirty:false };
 
 /* ---------- datos derivados ---------- */
+/* ---------- códigos QR de equipos ----------
+   El QR lleva el enlace de esta app con ?eq=<id del equipo>. Control Fitness lo lee con la cámara y llena solo el equipo
+   (nombre y foto); si alguien lo abre con la cámara normal del teléfono, llega aquí y ve la ficha del equipo. */
+var EQ_LINK = (location.search.match(/[?&]eq=([^&#]+)/) || [])[1] || null;
+function qrUrl(id){ return location.origin + location.pathname.replace(/[^\/]*$/, '') + '?eq=' + encodeURIComponent(id); }
+function qrSvg(id){
+  if (typeof qrcode !== 'function') return '';
+  var q = qrcode(0, 'M'); q.addData(qrUrl(id)); q.make();
+  return q.createSvgTag(4, 8).replace(/ width="[^"]*" height="[^"]*"/, ' width="100%" height="100%"');
+}
+function imprimeEtiquetas(ids){
+  if (!ids.length) return toast('No hay equipos para imprimir');
+  var items = ids.map(function(id){ var e = eqById(id); return '<div class="et">' + qrSvg(id) + '<b>' + esc(e.nombre) + '</b><small>' + esc(eqLugar(e)) + '</small></div>'; }).join('');
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Códigos QR de equipos</title><style>@page{margin:10mm}body{font-family:Arial,Helvetica,sans-serif;margin:0}' +
+    '.g{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}.et{border:1px dashed #999;border-radius:3mm;padding:4mm;text-align:center;break-inside:avoid}' +
+    '.et svg{width:42mm;height:42mm}.et b{display:block;font-size:11pt;margin-top:2mm}.et small{display:block;font-size:9pt;color:#555;margin-top:1mm}</style></head><body><div class="g">' + items + '</div></body></html>';
+  var f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f);
+  var d = f.contentWindow.document; d.open(); d.write(html); d.close();
+  setTimeout(function(){ try { f.contentWindow.focus(); f.contentWindow.print(); } catch(e){ toast('No se pudo abrir la impresión'); } setTimeout(function(){ if (f.parentNode) f.parentNode.removeChild(f); }, 60000); }, 400);
+}
 function eqById(id){ return Object.assign({ id: id, nombre:'Equipo (eliminado)', salonId:'', foto:'' }, (DB.equipos || {})[id] || {}); }
 function salonById(id){ return Object.assign({ id: id, nombre:'—', area:'' }, (DB.salones || {})[id] || {}); }
 function eqLugar(e){ return salonById(e.salonId).nombre; }
@@ -338,7 +358,7 @@ function vEquipos(){
   var eqs = lista('equipos').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
   var areas = ['Todos'].concat(eqs.map(function(e){ return eqArea(e); }).filter(function(a, i, ar){ return a && ar.indexOf(a) === i; }));
   var l = eqs.filter(function(e){ return ui.areaF === 'Todos' || eqArea(e) === ui.areaF; });
-  return '<div class="btns" style="margin-top:0"><button class="btn primary" data-a="eqNew">' + ic('plus') + ' Agregar equipo</button><button class="btn" data-a="salones">Salones</button></div>' + empiezaAqui() +
+  return '<div class="btns" style="margin-top:0"><button class="btn primary" data-a="eqNew">' + ic('plus') + ' Agregar equipo</button><button class="btn" data-a="salones">Salones</button><button class="btn" data-a="qrAll">Imprimir QR</button></div>' + empiezaAqui() +
     (areas.length > 1 ? '<div class="chips">' + areas.map(function(a){ return '<button class="chip' + (ui.areaF === a ? ' on' : '') + '" data-a="areaF" data-v="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</div>' : '') +
     (l.length ? '<div class="eqgrid">' + l.map(function(e){
       var s = eqEstado(e.id);
@@ -423,10 +443,20 @@ function sheetEq(){
   return mHead(e.nombre) +
     '<div class="eq" style="margin-bottom:12px"><div class="pic">' + ic('img') + esc(e.foto || '') + (e.foto ? '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div></div>' +
     '<div class="sub" style="margin:0 0 6px">' + esc(eqLugar(e)) + ' · ' + esc(eqArea(e)) + '</div>' + pill(s.t, s.c + ' big') +
-    '<div class="btns"><button class="btn" data-a="eqEdit" data-v="' + e.id + '">Editar equipo</button></div>' +
+    '<div class="btns"><button class="btn" data-a="eqEdit" data-v="' + e.id + '">Editar equipo</button><button class="btn" data-a="eqQR" data-v="' + e.id + '">Código QR</button></div>' +
     '<div class="h2 sm">Historial</div>' + (h.length ? '<div class="stack">' + h.map(function(r){
       return '<div class="rep ' + (r.cerrado ? 'verde' : semaforo(r)) + '"><div class="rep-h">' + (r.cerrado ? pill('Cerrado', 'ok big') : pillEstado(r)) + '<span class="go mut" style="font-size:12.5px">' + hace(r.creado) + '</span></div><span class="rep-d">' + esc(r.desc) + '</span>' + (r.diag ? '<small>' + esc(r.diag) + '</small>' : '') + '</div>';
     }).join('') + '</div>' : empty('Este equipo no tiene reportes.'));
+}
+function sheetQR(){
+  var raw = DB.equipos[ui.sheet.id]; if (!raw) return '';
+  var e = eqById(ui.sheet.id);
+  return mHead('Código QR') +
+    '<div style="max-width:260px;margin:4px auto 10px;background:#fff;border-radius:14px;padding:6px">' + qrSvg(e.id) + '</div>' +
+    '<div style="text-align:center"><b>' + esc(e.nombre) + '</b><div class="sub" style="margin:2px 0 8px">' + esc(eqLugar(e)) + '</div></div>' +
+    '<div class="sub" style="text-align:center;margin-bottom:8px">Imprímelo y pégalo en el equipo. El instructor lo escanea desde Control Fitness y se llena solo el equipo, con su foto.</div>' +
+    '<button class="btn cta block" data-a="qrPrint" data-v="' + e.id + '">Imprimir etiqueta</button>' +
+    '<button class="btn block" style="margin-top:10px" data-a="eqOpen" data-v="' + e.id + '">Volver al equipo</button>';
 }
 function sheetEqForm(){
   var nuevo = !ui.sheet.id;
@@ -527,12 +557,17 @@ function render(){
   }
   var car0 = document.querySelector('.carr'), sl = car0 && !ui.reset ? car0.scrollLeft : 0, sy = window.pageYOffset || 0;
   var sh0 = document.querySelector('#modal .sheet'), ss = sh0 ? sh0.scrollTop : 0; ui.reset = false;
+  if (EQ_LINK && DB.equipos) {              /* abierto desde un QR: mostrar la ficha de ese equipo */
+    var qid = ''; try { qid = decodeURIComponent(EQ_LINK); } catch(e){ qid = EQ_LINK; }
+    if (DB.equipos[qid]) { ui.tab = 'equipos'; ui.sheet = { k:'eq', id:qid }; }
+    EQ_LINK = null;
+  }
   var t = ui.tab, body = t === 'reportes' ? vReportes() : t === 'preventivo' ? vPreventivo() : t === 'equipos' ? vEquipos() : vGerencia();
   var errBanner = fbError ? '<div class="vinc off"><b>No se pudo conectar con la base de datos</b><span>' + esc(fbError) + '</span></div>'
     : !online ? '<div class="vinc off"><b>Sin internet</b><span>Los cambios se envían al volver la señal. No cierres la app hasta entonces.</span></div>' : '';
   document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + errBanner + body + '</main></div>' + bottomnav() + '</div>';
   var m = document.getElementById('modal'), k = ui.sheet && ui.sheet.k, html = '';
-  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'sal' ? sheetSalones() : k === 'cal' ? sheetCal() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
+  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'sal' ? sheetSalones() : k === 'cal' ? sheetCal() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
   if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
   else { m.hidden = true; m.innerHTML = ''; document.body.style.overflow = ''; }
   var car1 = document.querySelector('.carr'); if (car1) { car1.scrollLeft = sl; carrN(); }
@@ -629,6 +664,13 @@ var A = {
   prevDel:function(){ if (!confirm('¿Eliminar esta revisión programada?')) return; var id = ui.sheet.id; ui.sheet = null; guarda('preventivo/' + id, null); render(); toast('Revisión eliminada'); },
   /* equipos y salones */
   eqOpen:function(v){ ui.sheet = { k:'eq', id:v }; render(); },
+  eqQR:function(v){ ui.sheet = { k:'eqqr', id:v }; render(); },
+  qrPrint:function(v){ imprimeEtiquetas([v]); },
+  qrAll:function(){
+    var ids = lista('equipos').filter(function(e){ return ui.areaF === 'Todos' || eqArea(e) === ui.areaF; })
+      .sort(function(a, b){ return eqLugar(a).localeCompare(eqLugar(b), 'es') || a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); }).map(function(e){ return e.id; });
+    imprimeEtiquetas(ids);
+  },
   eqNew:function(){ var ss = lista('salones'); ui.sheet = { k:'eqform' }; ui.sh = { nombre:'', salonId: ss.length ? ss[0].id : '', foto:'' }; render(); },
   eqEdit:function(v){ var e = DB.equipos[v]; if (!e) return; ui.sheet = { k:'eqform', id:v }; ui.sh = { nombre:e.nombre, salonId:e.salonId, foto:e.foto || '' }; render(); },
   eqSave:function(){

@@ -50,7 +50,7 @@ nombre interno: no recibe mensajes). El PIN es la contraseña y debe tener MÍNI
 La primera vez que entra, la app le pide su nombre; ese nombre se guarda en cada reporte que atiende.
 
 Para activarlo (una sola vez), ANTES de subir la app:
-1) Firebase -> proyecto registro-mantenimiento -> Authentication -> Comenzar -> Método de acceso ->
+1) Firebase -> proyecto registro-mantenimiento-9854c -> Authentication -> Comenzar -> Método de acceso ->
    "Correo electrónico/contraseña" -> Habilitar (solo la primera opción) -> Guardar.
 2) Authentication -> Usuarios -> Agregar usuario: correo tecnico@mantenimiento.club y como contraseña el PIN.
 3) Sube la app y entra con usuario "tecnico" y ese PIN.
@@ -78,14 +78,24 @@ PRIMER USO
 2) Equipos -> Agregar: nombre, salón y nombre del archivo de foto (o "Cargar catálogo de ejemplo" para probar).
 3) Preventivo -> Agregar revisión: qué se revisa, dónde, frecuencia y próxima fecha.
 
+CÓDIGOS QR DE EQUIPOS
+---------------------
+Equipos -> abre un equipo -> "Código QR" -> "Imprimir etiqueta". O, en la lista de Equipos, "Imprimir QR" imprime las
+etiquetas de todos los equipos del área elegida (nombre y salón debajo de cada código). Pégalas en el equipo.
+El código lleva el enlace de esta app con ?eq=<id del equipo>. En Control Fitness, el instructor toca "Escanear código QR"
+y se llena solo el equipo (nombre, foto y salón), sin confundir la bicicleta de spinning con la del gimnasio.
+Si alguien lo escanea con la cámara normal del teléfono, abre esta app en la ficha del equipo (pide usuario y PIN).
+IMPORTANTE: el código usa la dirección donde esté publicada la app. Si algún día cambia la dirección, hay que reimprimirlos.
+Los equipos sin QR se siguen buscando por nombre.
+
 FOTOS DE EQUIPOS
 ----------------
 Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de archivo (ver img/equipos/LEEME.txt).
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos). Si agregas archivos nuevos en css/, js/ o img/,
-agrégalos a la lista ARCHIVOS de sw.js.
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 9). Si agregas archivos nuevos en css/, js/ o img/,
+agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL
 --------
