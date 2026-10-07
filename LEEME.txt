@@ -13,12 +13,20 @@ SEMÁFORO DE REPORTES
 ROJO      "nuevo"     nadie lo ha abierto. Siempre rojo, sea normal, urgente o "no se puede usar".
 AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proceso".
 VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
-Filtros de la lista: Todos / No se puede usar / Urgente / Normal.
+Cada reporte lleva un cronómetro que corre desde que llega y se detiene al resolverse.
 
 PANTALLAS
 ---------
-Reportes          lista con semáforo, cifras (sin atender, en proceso, resueltos) y filtros por nivel. Al tocar un
-                  reporte se abre: diagnóstico, si requiere compra o cambio y costo estimado.
+Reportes          arriba, una barra con el día de hoy y el botón "Fechas" (calendario) para elegir el periodo:
+                  Pendientes (lo normal), Hoy, 7 días, 30 días, 3 meses, 12 meses, Este mes, Todo o un rango de
+                  fechas. Con un periodo se ven TODOS los reportes que llegaron en esas fechas (abiertos y ya
+                  cerrados) y luego se filtra por estado. Sirve para contar los procesos de un periodo.
+                  Abajo, un carrusel que avanza solo (cada reporte se muestra unos segundos) con los reportes sin
+                  resolver (no visto y en proceso), del que lleva más tiempo al que lleva menos. Se detiene al tocarlo
+                  o con el botón de pausa. Abajo, tres botones: rojo = No visto, amarillo = En proceso, verde = Resuelto; al
+                  tocar uno solo salen los de ese estado (al tocarlo otra vez se quita). El filtro por urgencia
+                  (No se puede usar / Urgente / Normal) está oculto: se abre con el botón "Urgencia".
+                  Al tocar un reporte se abre: tiempos, diagnóstico, si requiere compra o cambio y costo estimado.
 Preventivo        revisiones programadas: vencido (rojo), hoy (amarillo) y próximos. "Ya se revisó" la reprograma;
                   "Posponer" pide motivo y nueva fecha.
 Equipos           catálogo por salón con foto; salones y zonas.
@@ -34,11 +42,34 @@ CÓMO SUBIRLA
 3) https://cfitnesscampestre-star.github.io/control-mantenimiento/
 4) Si el celular no toma el cambio, ciérrala por completo y ábrela otra vez.
 
+ACCESO (usuario y PIN)
+----------------------
+Al abrir la app aparece la carátula de acceso. Cada técnico tiene su propio usuario y PIN (Firebase Authentication,
+correo y contraseña). Al escribir el usuario "tecnico" la app usa tecnico@mantenimiento.club (el correo es solo un
+nombre interno: no recibe mensajes). El PIN es la contraseña y debe tener MÍNIMO 6 caracteres (por ejemplo, 6 dígitos).
+La primera vez que entra, la app le pide su nombre; ese nombre se guarda en cada reporte que atiende.
+
+Para activarlo (una sola vez), ANTES de subir la app:
+1) Firebase -> proyecto registro-mantenimiento -> Authentication -> Comenzar -> Método de acceso ->
+   "Correo electrónico/contraseña" -> Habilitar (solo la primera opción) -> Guardar.
+2) Authentication -> Usuarios -> Agregar usuario: correo tecnico@mantenimiento.club y como contraseña el PIN.
+3) Sube la app y entra con usuario "tecnico" y ese PIN.
+4) Después de comprobar que entras, pega las reglas de reglas-firebase.txt en Realtime Database -> Reglas -> Publicar.
+Otro técnico: Authentication -> Agregar usuario (nombre@mantenimiento.club + su PIN). También puede usarse un correo real:
+en "Usuario" se escribe el correo completo.
+Cambiar un PIN: en Authentication, elimina el usuario y créalo otra vez con el PIN nuevo (la app le volverá a pedir su nombre).
+Para abrir la app sin acceso (por ejemplo, mientras preparas Firebase): js/config.js -> REQUIERE_ACCESO = false.
+
+FOTOS DEL ANTES Y EL DESPUÉS
+----------------------------
+El técnico las toma desde el reporte (en el celular abre la cámara): "Antes" cuando llega y "Después" al resolver. Se
+reducen a unos 1000 px y se guardan aparte, en /fotos/{id del reporte}, para que la lista siga siendo ligera. Si al
+marcar resuelto falta la foto del después, la app lo avisa (js/config.js -> FOTO_DESPUES_OBLIGATORIA = true para exigirla).
+El instructor no manda fotos: solo elige el equipo del catálogo, que ya trae su imagen.
+
 REGLAS DE FIREBASE
 ------------------
-{ "rules": { ".read": true, ".write": true, "reportes": { ".indexOn": ["profId"] } } }
-Con reglas abiertas cualquiera que conozca la dirección puede leer o escribir. Antes de usarla con todos los
-instructores hay que cerrarla con autenticación.
+Ver reglas-firebase.txt (se publican después de comprobar el acceso).
 
 PRIMER USO
 ----------
@@ -56,6 +87,30 @@ AL SUBIR CAMBIOS
 Sube el número ?v= en index.html y VERSION en sw.js (van juntos). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js.
 
+CARRUSEL
+--------
+js/config.js: CARRUSEL_SEGUNDOS = segundos que se muestra cada reporte; CARRUSEL_ESPERA = segundos que espera
+después de que alguien lo toca o lo desliza antes de volver a avanzar solo. Si el equipo tiene activado
+"reducir movimiento", el carrusel empieza en pausa.
+
+ÍCONO Y LOGO
+------------
+El ícono al instalar la app (img/icon-192.png, icon-512.png, icon-maskable-512.png y apple-touch-icon.png) y el logo
+del encabezado y del menú lateral (img/logo.png) salen del logo "Mantenimiento Deportivo · Club Campestre".
+Si cambias el logo, hay que regenerar esos archivos. Para ver el ícono nuevo hay que desinstalar la app del
+celular y volver a instalarla.
+
+CONTROL DE TIEMPOS (preparación)
+--------------------------------
+Cada reporte guarda sus fechas: creado (llegó), visto (lo abrió mantenimiento) y resuelto. Al resolverlo se
+guardan además los tiempos en milisegundos: msRespuesta (llegó -> lo abrió), msAtencion (lo abrió -> resuelto)
+y msTotal (llegó -> resuelto). Al eliminarlo el instructor, todo pasa a /historial. Con esos datos se podrán
+sacar promedios por equipo, salón, nivel de urgencia y tipo de problema, y de ahí definir cuánto tiempo se le
+debe dar a cada circunstancia.
+Para poder agrupar por TIPO de problema, Control Fitness debería guardar también los atajos que el instructor
+eligió ("No enciende", "Ruido extraño", "Flojo o roto", "Falta pieza") en un campo aparte, por ejemplo
+tipos: ["No enciende"].
+
 ESTRUCTURA DE DATOS
 -------------------
 /salones/{id}    { nombre, area }
@@ -63,13 +118,19 @@ ESTRUCTURA DE DATOS
 /reportes/{id}   reportes ABIERTOS:
                  { equipoId, desc, urg: "normal"|"urgente"|"fuera", profId, prof, area, clase, salonId, otroLugar,
                    creado (ms), estado: "nuevo"|"atencion"|"resuelto", visto (ms), diag, compra, cambio, costo,
-                   resuelto (ms), origen: "fitness" (opcional) }
+                   resuelto (ms), msRespuesta, msAtencion, msTotal, tecnico, tecnicoId, resueltoPor,
+                   fotoAntes, fotoDespues (indicadores; las fotos están en /fotos),
+                   origen: "fitness" (opcional) }
 /historial/{id}  reportes que el instructor ya eliminó (se mueven aquí con cerrado = ms)
 /preventivo/{id} { titulo, detalle, salonId, freq (días), proxima (ms), posp[], hist[] }
+/fotos/{id del reporte} { antes, despues }  fotos reducidas (texto "data:image/jpeg;base64,...")
+/usuarios/{uid}  { nombre, email }  técnicos que han entrado
 Control Gerencia reconoce un reporte de Fitness por origen:"fitness" o porque profId es el número de instructor.
 
 LÍMITES CONOCIDOS
 -----------------
 - Sin internet: los cambios se envían al volver la señal, pero solo si la app sigue abierta.
-- Sin PIN ni autenticación todavía.
+- Los instructores crean reportes desde Control Fitness sin iniciar sesión aquí; por eso /reportes y /historial quedan
+  abiertos para escribir. El catálogo, el preventivo, las fotos y los usuarios sí se protegen con las reglas.
+- Las fotos son visibles para quien conozca la dirección de la base (lectura abierta).
 - El repositorio es público: el código y las fotos de los equipos son visibles con el enlace.
