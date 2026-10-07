@@ -348,7 +348,12 @@ function vReportes(){
   var titulo = ui.estado === 'nuevo' ? 'No visto' : ui.estado === 'atencion' ? 'En proceso' : ui.estado === 'resuelto' ? 'Resueltos' : R ? 'Todos los reportes' : 'Sin resolver';
   var orden = R ? plu(l.length, 'reporte', 'reportes') + ' · pendientes primero' : ui.estado === 'resuelto' ? 'Los más recientes primero' : 'El que lleva más tiempo, primero';
   var sts = [['nuevo', 'rojo', 'No visto'], ['atencion', 'amar', 'En proceso'], ['resuelto', 'verde', 'Resuelto']];
-  return empiezaAqui() + barraPeriodo(R, base.length) +
+  var urgBarra = '<div class="urgf"><button class="chip' + (ui.urg ? ' on' : '') + '" data-a="urgAbre" aria-expanded="' + ui.urgAbre + '">Urgencia' + (ui.urg ? ': ' + URG_TXT[ui.urg] : '') + (ui.urgAbre ? ' ▴' : ' ▾') + '</button>' +
+      '<button class="chip' + (ui.urg ? '' : ' on') + '" data-a="urgTodos" aria-pressed="' + !ui.urg + '">Todos</button></div>' +
+    (ui.urgAbre ? '<div class="chips">' + [['fuera', 'No se puede usar'], ['urgente', 'Urgente'], ['normal', 'Normal']].map(function(f){
+      return '<button class="chip' + (ui.urg === f[0] ? ' on' : '') + '" data-a="urg" data-v="' + f[0] + '">' + f[1] + '</button>';
+    }).join('') + '</div>' : '');
+  return empiezaAqui() + barraPeriodo(R, base.length) + urgBarra +
     '<div class="carr-nav"><div><b>' + titulo + '</b><small>' + orden + '</small></div>' +
       (l.length ? '<div class="carr-ctl"><span id="carr-n">1 de ' + l.length + '</span>' +
         (l.length > 1 ? '<button class="ibtn" data-a="carrPausa" aria-label="' + (ui.carrPausa ? 'Reanudar el carrusel' : 'Pausar el carrusel') + '">' + ic(ui.carrPausa ? 'play' : 'pausa') + '</button>' : '') +
@@ -357,11 +362,7 @@ function vReportes(){
               : empty(ready ? (R ? 'No hay reportes en este periodo' + (ui.estado ? ' con ese estado.' : '.') : ui.estado ? 'No hay reportes en este estado.' : 'No hay reportes sin resolver. Todo en orden.') : 'Cargando…')) +
     '<div class="sts">' + sts.map(function(x){
       return '<button class="stb ' + x[1] + (ui.estado === x[0] ? ' on' : '') + '" data-a="estado" data-v="' + x[0] + '" aria-pressed="' + (ui.estado === x[0]) + '"><b>' + (cnt[x[0]] || 0) + '</b><span>' + x[2] + '</span></button>';
-    }).join('') + '</div>' +
-    '<div class="urgf"><button class="chip' + (ui.urg ? ' on' : '') + '" data-a="urgAbre" aria-expanded="' + ui.urgAbre + '">Urgencia' + (ui.urg ? ': ' + URG_TXT[ui.urg] : '') + (ui.urgAbre ? ' ▴' : ' ▾') + '</button></div>' +
-    (ui.urgAbre ? '<div class="chips">' + [['fuera', 'No se puede usar'], ['urgente', 'Urgente'], ['normal', 'Normal']].map(function(f){
-      return '<button class="chip' + (ui.urg === f[0] ? ' on' : '') + '" data-a="urg" data-v="' + f[0] + '">' + f[1] + '</button>';
-    }).join('') + '</div>' : '');
+    }).join('') + '</div>';
 }
 function vPreventivo(){
   var l = lista('preventivo').sort(function(a, b){ return a.proxima - b.proxima; });
@@ -644,6 +645,7 @@ var A = {
   },
   carrPausa:function(){ ui.carrPausa = !ui.carrPausa; render(); },
   urgAbre:function(){ ui.urgAbre = !ui.urgAbre; render(); },
+  urgTodos:function(){ ui.urg = null; ui.urgAbre = false; ui.reset = true; render(); },
   urg:function(v){ ui.urg = ui.urg === v ? null : v; ui.reset = true; render(); },
   carr:function(v){ carToca(); var c = document.querySelector('.carr'); if (c) c.scrollBy({ left: (+v) * c.clientWidth * 0.9, behavior:'smooth' }); },
   areaF:function(v){ ui.areaF = v; render(); },

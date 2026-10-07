@@ -73,7 +73,7 @@ button.eq:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(8,34,40,.
 .stb.rojo.on{background:var(--bad);border-color:var(--bad);color:#fff;box-shadow:0 6px 16px rgba(214,59,47,.35)}
 .stb.amar.on{background:#c47f00;border-color:#c47f00;color:#fff;box-shadow:0 6px 16px rgba(196,127,0,.35)}
 .stb.verde.on{background:#0b8a6c;border-color:#0b8a6c;color:#fff;box-shadow:0 6px 16px rgba(11,138,108,.35)}
-.urgf{margin:2px 0 4px}
+.urgf{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 6px}
 
 /* etiquetas de estado con color sólido dentro de las tarjetas de color (para que se distingan del fondo) */
 .rep.rojo .pill.bad{background:var(--bad);color:#fff}
