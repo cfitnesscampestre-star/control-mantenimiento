@@ -24,8 +24,8 @@ los profesores hay que cerrarla con autenticación.
 
 PRIMER USO
 ----------
-1) Vista Mantenimiento -> Equipos -> "Salones": da de alta cada salón o zona con su área.
-   El nombre del salón debe escribirse igual que el lugar de las clases en Control Gerencia.
+1) Vista Mantenimiento -> Equipos -> botón "Cargar los salones de Fitness": crea Salón 1, Salon Spinning,
+   Salon Yoga, Salon 2, Salon3, Box y CrossFit, con los mismos nombres que en Control Fitness.
 2) Equipos -> Agregar: nombre, salón y nombre del archivo de foto.
    (O "Cargar catálogo de ejemplo" para probar; luego se edita o se borra.)
 3) Preventivo -> Agregar: qué se revisa, dónde, frecuencia y próxima fecha.

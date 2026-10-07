@@ -1,7 +1,7 @@
 'use strict';
 /* Al subir cambios: sube VERSION aquí y el número ?v= en index.html (van juntos).
    Si agregas archivos nuevos en css/, js/ o img/, agrégalos a ARCHIVOS. */
-const VERSION = 1;
+const VERSION = 2;
 const CACHE = 'cm-v' + VERSION;
 const ARCHIVOS = ['./', 'index.html', 'manifest.json', 'css/app.css', 'js/config.js', 'js/app.js',
   'img/icon-192.png', 'img/icon-512.png', 'img/favicon-32.png'];

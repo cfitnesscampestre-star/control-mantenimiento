@@ -14,6 +14,9 @@ var DAY = 864e5, HR = 36e5, CACHE_KEY = 'cm_cache_v1';
 var URG_TXT = { normal: 'Normal', urgente: 'Urgente', fuera: 'No se puede usar' };
 var UMBRAL = (typeof UMBRAL_HORAS !== 'undefined') ? UMBRAL_HORAS : { normal: 24, urgente: 4, fuera: 2 };
 
+/* Salones tal como se llaman en Control Fitness (el nombre debe coincidir). [id, nombre, área] */
+var SALONES_FITNESS = [['salon-1', 'Salón 1', 'Salones'], ['salon-spinning', 'Salon Spinning', 'Spinning'], ['salon-yoga', 'Salon Yoga', 'Yoga'],
+  ['salon-2', 'Salon 2', 'Salones'], ['salon-3', 'Salon3', 'Salones'], ['box', 'Box', 'Box'], ['crossfit', 'CrossFit', 'CrossFit']];
 var DB = { equipos: {}, salones: {}, reportes: {}, preventivo: {}, historial: {} };
 var db = null, online = false, ready = false, fbError = '';
 
@@ -160,7 +163,7 @@ function prevCard(p, ro){
 function empiezaAqui(){
   if (lista('salones').length || lista('equipos').length) return '';
   return '<div class="card"><div class="ttl">Empieza aquí</div><div class="sub">Todavía no hay salones ni equipos. Primero da de alta los salones o zonas, y luego los equipos de cada uno. Así a cada profesor solo le aparecen los equipos de su salón.</div>' +
-    '<button class="btn pri" data-a="salones">Dar de alta salones</button><button class="btn" data-a="ejemplo">Cargar catálogo de ejemplo</button></div>';
+    '<button class="btn pri" data-a="salonesFitness">Cargar los salones de Fitness</button><button class="btn" data-a="salones">Dar de alta salones a mano</button><button class="btn" data-a="ejemplo">Cargar catálogo de ejemplo</button></div>';
 }
 function vMantReportes(){
   var all = abiertos(), l = all.slice();
@@ -317,7 +320,8 @@ function sheetEqForm(){
 function sheetSalones(){
   var ss = lista('salones').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
   return sheetWrap(cab('Salones y zonas') +
-    '<div class="sub">Cada equipo pertenece a un salón. El nombre del salón debe escribirse igual que el lugar de las clases en Control Gerencia.</div>' +
+    '<div class="sub">Cada equipo pertenece a un salón. El nombre debe ser igual al del salón en Control Fitness, para que a cada instructor le salgan los equipos de su salón.</div>' +
+    (SALONES_FITNESS.some(function(f){ return !DB.salones[f[0]]; }) ? '<button class="btn pri" data-a="salonesFitness">Cargar los salones de Fitness</button>' : '') +
     (ss.length ? ss.map(function(s){
       return '<div class="card"><div class="row"><div><div class="ttl">' + esc(s.nombre) + '</div><div class="mut">Área ' + esc(s.area) + '</div></div></div>' +
         '<div class="btns"><button class="btn sm" data-a="salEdit" data-v="' + s.id + '">Renombrar</button><button class="btn sm danger" data-a="salDel" data-v="' + s.id + '">Eliminar</button></div></div>';
@@ -449,16 +453,22 @@ var A = {
     if (lista('equipos').some(function(e){ return e.salonId === v; })) return toast('Este salón tiene equipos. Cámbialos de salón antes de eliminarlo.');
     if (!confirm('¿Eliminar este salón?')) return; guarda('salones/' + v, null); toast('Salón eliminado');
   },
+  salonesFitness:function(){
+    var up = {}, n = 0;
+    SALONES_FITNESS.forEach(function(f){ if (!DB.salones[f[0]]) { up['salones/' + f[0]] = { nombre: f[1], area: f[2] }; n++; } });
+    if (!n) return toast('Los salones de Fitness ya están cargados');
+    db.ref().update(up).then(function(){ toast('Salones de Fitness cargados'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
+  },
   ejemplo:function(){
-    if (!confirm('Se agregan salones, equipos y revisiones de ejemplo. Podrás editarlos o eliminarlos. ¿Continuar?')) return;
-    var up = {}, d0 = sod(now()), sal = { spinning:['Salón de Spinning', 'Spinning'], gimnasio:['Gimnasio · planta alta', 'Gimnasio'], 'usos-multiples':['Salón de usos múltiples', 'Salones'], 'salon-1':['Salón 1', 'Salones'] };
-    Object.keys(sal).forEach(function(k){ up['salones/' + k] = { nombre: sal[k][0], area: sal[k][1] }; });
-    [['Bicicleta spinning 01', 'spinning', 'bici-01.jpg'], ['Bicicleta spinning 02', 'spinning', 'bici-02.jpg'], ['Bicicleta spinning 03', 'spinning', 'bici-03.jpg'],
-     ['Caminadora 01', 'gimnasio', 'caminadora-01.jpg'], ['Caminadora 02', 'gimnasio', 'caminadora-02.jpg'], ['Rack de pesas', 'gimnasio', 'rack-pesas.jpg'],
-     ['Bocina salón 2', 'usos-multiples', 'bocina-s2.jpg'], ['Aire acondicionado salón 2', 'usos-multiples', 'aire-s2.jpg'], ['Espejo salón 1', 'salon-1', 'espejo-s1.jpg']
+    if (!confirm('Se agregan equipos y revisiones de ejemplo en los salones de Fitness. Podrás editarlos o eliminarlos. ¿Continuar?')) return;
+    var up = {}, d0 = sod(now());
+    SALONES_FITNESS.forEach(function(f){ up['salones/' + f[0]] = { nombre: f[1], area: f[2] }; });
+    [['Bicicleta spinning 01', 'salon-spinning', 'bici-01.jpg'], ['Bicicleta spinning 02', 'salon-spinning', 'bici-02.jpg'], ['Bicicleta spinning 03', 'salon-spinning', 'bici-03.jpg'],
+     ['Costal de box 1', 'box', 'costal-1.jpg'], ['Rack de pesas', 'crossfit', 'rack-pesas.jpg'], ['Barra olímpica 1', 'crossfit', 'barra-1.jpg'],
+     ['Bocina salón 2', 'salon-2', 'bocina-s2.jpg'], ['Aire acondicionado salón 2', 'salon-2', 'aire-s2.jpg'], ['Espejo salón 1', 'salon-1', 'espejo-s1.jpg'], ['Tapetes de yoga', 'salon-yoga', 'tapetes.jpg']
     ].forEach(function(e){ up['equipos/' + nuevoId('equipos')] = { nombre:e[0], salonId:e[1], foto:e[2] }; });
-    [['Caminadora 01', 'Revisión mensual · banda y motor', 'gimnasio', 30, d0 - 3 * DAY], ['Bicicletas de spinning', 'Tornillería, pedales y resistencia', 'spinning', 7, d0],
-     ['Aire acondicionado salón 2', 'Limpieza de filtros', 'usos-multiples', 30, d0], ['Espejos y soportes · salón 1', 'Revisión de anclajes', 'salon-1', 7, d0 + DAY]
+    [['Bicicletas de spinning', 'Tornillería, pedales y resistencia', 'salon-spinning', 7, d0], ['Costales y soportes', 'Cadenas y anclajes', 'box', 15, d0 - 2 * DAY],
+     ['Aire acondicionado salón 2', 'Limpieza de filtros', 'salon-2', 30, d0], ['Espejos y soportes · salón 1', 'Revisión de anclajes', 'salon-1', 7, d0 + DAY]
     ].forEach(function(p){ up['preventivo/' + nuevoId('preventivo')] = { titulo:p[0], detalle:p[1], salonId:p[2], freq:p[3], proxima:p[4], posp:[], hist:[] }; });
     db.ref().update(up).then(function(){ toast('Catálogo de ejemplo cargado'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
   }
