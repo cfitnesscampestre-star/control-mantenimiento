@@ -177,7 +177,12 @@ function vMantReportes(){
     '<div class="chips">' + [['todos','Todos'], ['sin','Sin atender'], ['atencion','En atención'], ['compras','Compras']].map(function(f){
       return '<button class="chip" data-a="filtro" data-v="' + f[0] + '" aria-pressed="' + (ui.filtro === f[0]) + '">' + f[1] + '</button>';
     }).join('') + '</div>' +
-    (l.length ? l.map(function(r){ return repCard(r, 'mant'); }).join('') : '<div class="empty">' + (ready ? 'No hay reportes en esta lista.' : 'Cargando…') + '</div>');
+    (l.length ? l.map(function(r){ return repCard(r, 'mant'); }).join('') : '<div class="empty">' + (ready ? 'No hay reportes en esta lista.' : 'Cargando…') + '</div>') + pruebaCard();
+}
+function pruebaCard(){
+  return '<div class="card" style="margin-top:8px"><div class="ttl">Datos de prueba</div>' +
+    '<div class="sub">Para probar sin esperar. Los reportes de ejemplo incluyen casos en rojo, en atención y resueltos. “Borrar datos de prueba” quita los reportes de ejemplo y de la vista de prueba, y los equipos y revisiones del catálogo de ejemplo. No toca los salones ni lo que tú diste de alta.</div>' +
+    '<button class="btn" data-a="reportesEjemplo">Cargar reportes de ejemplo</button><button class="btn danger" data-a="borraPrueba">Borrar datos de prueba</button></div>';
 }
 function vMantPrev(){
   var l = lista('preventivo').sort(function(a, b){ return a.proxima - b.proxima; });
@@ -453,6 +458,32 @@ var A = {
     if (lista('equipos').some(function(e){ return e.salonId === v; })) return toast('Este salón tiene equipos. Cámbialos de salón antes de eliminarlo.');
     if (!confirm('¿Eliminar este salón?')) return; guarda('salones/' + v, null); toast('Salón eliminado');
   },
+  reportesEjemplo:function(){
+    var eqs = lista('equipos').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
+    if (eqs.length < 1) return toast('Primero da de alta equipos o carga el catálogo de ejemplo');
+    var H = HR, t = now(), up = {};
+    var m = [
+      ['No enciende, el tablero se queda apagado.', 'fuera', 31 * H, 'nuevo', null],
+      ['Pedal flojo, se mueve al pedalear.', 'normal', 26 * H, 'nuevo', null],
+      ['Distorsiona el sonido.', 'normal', 9 * H, 'atencion', { diag:'Falta el cable de audio, pendiente de comprar.', compra:true, cambio:false, costo:'450' }],
+      ['El soporte se mueve.', 'normal', 50 * H, 'resuelto', { diag:'Se cambió el soporte y quedó firme.', compra:false, cambio:true, costo:'', resuelto: t - 3 * H }]
+    ];
+    m.forEach(function(x, i){
+      var e = eqs[i % eqs.length], sa = salonById(e.salonId);
+      up['reportes/' + nuevoId('reportes')] = limpia(Object.assign({ equipoId:e.id, desc:x[0], urg:x[1], profId:'ejemplo', prof:'Profesor de ejemplo', area:sa.area, clase:'Clase de ejemplo', salonId:e.salonId, otroLugar:false, creado: t - x[2], estado:x[3] }, x[4] || {}));
+    });
+    db.ref().update(up).then(function(){ toast('Reportes de ejemplo cargados'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
+  },
+  borraPrueba:function(){
+    if (!confirm('Se borran los reportes de ejemplo y de prueba, y los equipos y revisiones del catálogo de ejemplo. ¿Continuar?')) return;
+    var up = {}, esPrueba = function(r){ return r.profId === 'ejemplo' || r.profId === 'prueba'; };
+    lista('reportes').filter(esPrueba).forEach(function(r){ up['reportes/' + r.id] = null; });
+    lista('historial').filter(esPrueba).forEach(function(r){ up['historial/' + r.id] = null; });
+    lista('equipos').filter(function(e){ return e.ejemplo; }).forEach(function(e){ up['equipos/' + e.id] = null; });
+    lista('preventivo').filter(function(p){ return p.ejemplo; }).forEach(function(p){ up['preventivo/' + p.id] = null; });
+    if (!Object.keys(up).length) return toast('No hay datos de prueba que borrar');
+    db.ref().update(up).then(function(){ toast('Datos de prueba borrados'); }).catch(function(e){ toast('No se pudo borrar: ' + e.message); });
+  },
   salonesFitness:function(){
     var up = {}, n = 0;
     SALONES_FITNESS.forEach(function(f){ if (!DB.salones[f[0]]) { up['salones/' + f[0]] = { nombre: f[1], area: f[2] }; n++; } });
@@ -466,10 +497,10 @@ var A = {
     [['Bicicleta spinning 01', 'salon-spinning', 'bici-01.jpg'], ['Bicicleta spinning 02', 'salon-spinning', 'bici-02.jpg'], ['Bicicleta spinning 03', 'salon-spinning', 'bici-03.jpg'],
      ['Costal de box 1', 'box', 'costal-1.jpg'], ['Rack de pesas', 'crossfit', 'rack-pesas.jpg'], ['Barra olímpica 1', 'crossfit', 'barra-1.jpg'],
      ['Bocina salón 2', 'salon-2', 'bocina-s2.jpg'], ['Aire acondicionado salón 2', 'salon-2', 'aire-s2.jpg'], ['Espejo salón 1', 'salon-1', 'espejo-s1.jpg'], ['Tapetes de yoga', 'salon-yoga', 'tapetes.jpg']
-    ].forEach(function(e){ up['equipos/' + nuevoId('equipos')] = { nombre:e[0], salonId:e[1], foto:e[2] }; });
+    ].forEach(function(e){ up['equipos/' + nuevoId('equipos')] = { nombre:e[0], salonId:e[1], foto:e[2], ejemplo:true }; });
     [['Bicicletas de spinning', 'Tornillería, pedales y resistencia', 'salon-spinning', 7, d0], ['Costales y soportes', 'Cadenas y anclajes', 'box', 15, d0 - 2 * DAY],
      ['Aire acondicionado salón 2', 'Limpieza de filtros', 'salon-2', 30, d0], ['Espejos y soportes · salón 1', 'Revisión de anclajes', 'salon-1', 7, d0 + DAY]
-    ].forEach(function(p){ up['preventivo/' + nuevoId('preventivo')] = { titulo:p[0], detalle:p[1], salonId:p[2], freq:p[3], proxima:p[4], posp:[], hist:[] }; });
+    ].forEach(function(p){ up['preventivo/' + nuevoId('preventivo')] = { titulo:p[0], detalle:p[1], salonId:p[2], freq:p[3], proxima:p[4], posp:[], hist:[], ejemplo:true }; });
     db.ref().update(up).then(function(){ toast('Catálogo de ejemplo cargado'); }).catch(function(e){ toast('No se pudo cargar: ' + e.message); });
   }
 };
