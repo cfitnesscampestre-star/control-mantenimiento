@@ -1,0 +1,6 @@
+FOTOS DE LOS EQUIPOS
+====================
+Sube aquí una foto por equipo (JPG, unos 800 px de ancho y 50-100 KB).
+En la app, al dar de alta el equipo, escribe el nombre del archivo tal cual (ej. bici-03.jpg).
+Si todavía no hay foto, la app muestra un recuadro con el nombre del archivo.
+Después de subir una foto, tarda uno o dos minutos en aparecer.

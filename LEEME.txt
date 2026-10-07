@@ -1,0 +1,69 @@
+CONTROL MANTENIMIENTO
+=====================
+App del área de mantenimiento del club. Los profesores reportan equipo desde Control Gerencia,
+el técnico lo atiende aquí, y gerencia ve el resumen.
+
+Base de datos: Firebase, proyecto registro-mantenimiento-9854c (Realtime Database).
+Repositorio:   cfitnesscampestre-star/control-mantenimiento (GitHub Pages).
+
+CÓMO SUBIRLA
+------------
+1) En el repositorio: "uploading an existing file". Arrastra el CONTENIDO de esta carpeta
+   (index.html, sw.js, manifest.json, LEEME.txt y las carpetas css, js, img), no la carpeta en sí.
+   Commit changes.
+2) Settings -> Pages -> Source: rama main, carpeta / (root) -> Save.
+3) En uno o dos minutos: https://cfitnesscampestre-star.github.io/control-mantenimiento/
+4) En el celular del técnico: abrir esa dirección y "Agregar a pantalla de inicio".
+
+REGLAS DE FIREBASE
+------------------
+Realtime Database -> Reglas. Para arrancar y probar:
+  { "rules": { ".read": true, ".write": true } }
+Con reglas abiertas cualquiera que conozca la dirección puede leer o escribir. Antes de usarla con
+los profesores hay que cerrarla con autenticación.
+
+PRIMER USO
+----------
+1) Vista Mantenimiento -> Equipos -> "Salones": da de alta cada salón o zona con su área.
+   El nombre del salón debe escribirse igual que el lugar de las clases en Control Gerencia.
+2) Equipos -> Agregar: nombre, salón y nombre del archivo de foto.
+   (O "Cargar catálogo de ejemplo" para probar; luego se edita o se borra.)
+3) Preventivo -> Agregar: qué se revisa, dónde, frecuencia y próxima fecha.
+4) "Profesor (prueba)" sirve para mandar un reporte de prueba y ver el flujo completo antes de
+   conectar Control Gerencia. "Gerencia (vista)" es el resumen de solo lectura.
+
+FOTOS DE EQUIPOS
+----------------
+Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de archivo
+(ver img/equipos/LEEME.txt).
+
+AL SUBIR CAMBIOS
+----------------
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos). Si agregas archivos nuevos en css/,
+js/ o img/, agrégalos a la lista ARCHIVOS de sw.js.
+
+TIEMPOS EN ROJO
+---------------
+js/config.js -> UMBRAL_HORAS: horas sin atender antes de ponerse en rojo
+(normal 24, urgente 4, no se puede usar 2).
+
+ESTRUCTURA DE DATOS (para conectar Control Gerencia)
+----------------------------------------------------
+/salones/{id}    { nombre, area }
+/equipos/{id}    { nombre, salonId, foto }
+/reportes/{id}   reportes ABIERTOS:
+                 { equipoId, desc, urg: "normal"|"urgente"|"fuera", profId, prof, area, clase,
+                   salonId, otroLugar, creado (ms), estado: "nuevo"|"atencion"|"resuelto",
+                   diag, compra, cambio, costo, resuelto (ms) }
+/historial/{id}  reportes que el profesor ya eliminó (se mueven aquí con cerrado = ms)
+/preventivo/{id} { titulo, detalle, salonId, freq (días), proxima (ms), posp[], hist[] }
+
+Control Gerencia solo debe ESCRIBIR en /reportes/{id} (una clave nueva por reporte) y quitar el
+reporte al "eliminar aviso" moviéndolo a /historial. Nunca reescribir nodos completos.
+
+LÍMITES CONOCIDOS
+-----------------
+- Sin internet: los cambios se envían al volver la señal, pero solo si la app sigue abierta.
+  Si se cierra antes, se pierden.
+- Sin PIN ni autenticación todavía.
+- El repositorio es público: el código y las fotos de los equipos son visibles con el enlace.
