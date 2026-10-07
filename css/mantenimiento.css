@@ -1,0 +1,46 @@
+/* =====================================================================
+   mantenimiento.css — lo propio de Control Mantenimiento, sobre los estilos de Control Gerencia
+   (main.css, app-mobile.css y app-desktop.css son los mismos que usa Gerencia).
+   Semáforo de reportes:  ROJO = nadie lo ha abierto · AMARILLO = ya lo vio mantenimiento (en proceso) · VERDE = resuelto.
+   ===================================================================== */
+.replist,.eqgrid{display:grid;grid-template-columns:1fr;gap:12px}
+.eqgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:900px){
+  .replist{grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:14px}
+  .eqgrid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+}
+.rep{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;padding:14px 16px;border-radius:18px;border:1.5px solid var(--line);background:#fff;box-shadow:var(--sh);min-width:0}
+button.rep{transition:transform .12s,box-shadow .12s}
+button.rep:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(8,34,40,.14)}
+button.rep:active{transform:scale(.99)}
+.rep .rep-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px}
+.rep .rep-h .go{margin-left:auto;color:var(--mut)}
+.rep .rep-t{font-size:18px;font-weight:700;line-height:1.2;color:var(--ink)}
+.rep .rep-d{color:var(--ink);font-size:15px}
+.rep small{color:var(--mut);font-size:13px;line-height:1.4}
+.rep.rojo{background:#fde7e4;border-color:#e4958b}
+.rep.rojo small{color:#8a2a21}
+.rep.amar{background:#fdf0d5;border-color:#e9c15d}
+.rep.amar small{color:#7a5200}
+.rep.verde{background:#dcf5ee;border-color:#7fcdb5}
+.rep.verde small{color:#0b5f49}
+.rep .rep-x{margin-top:6px;padding-top:8px;border-top:1px solid rgba(16,34,43,.12);display:flex;flex-direction:column;gap:2px}
+.rep .btns{margin-top:10px}
+.pill.u-fuera{background:var(--navy);color:#fff}
+.pill.u-urg{background:#fff;color:#b3281e;box-shadow:inset 0 0 0 1.5px #e4958b}
+.pill.big{font-size:12.5px;padding:4px 12px}
+.chk{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:15px;color:var(--ink);cursor:pointer}
+.chk input{width:22px;height:22px;padding:0;flex:none;accent-color:var(--g)}
+.eq{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:var(--sh);text-align:left;width:100%;padding:0}
+button.eq:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(8,34,40,.14)}
+.eq .pic{position:relative;height:104px;background:#e3ecea;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--mut);font-size:11.5px;overflow:hidden;text-align:center;padding:0 8px}
+.eq .pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.eq .inf{padding:11px 13px 13px;display:flex;flex-direction:column;gap:4px}
+.eq .inf b{font-size:15.5px;font-weight:600;line-height:1.2}
+.eq .inf small{color:var(--mut);font-size:13px}
+.eq .inf .pill{align-self:flex-start;margin-top:2px}
+.sheet .eq{box-shadow:none}
+.sheet .eq .pic{height:140px}
+.sheet .rep{box-shadow:none;margin-bottom:0}
+.stack{display:flex;flex-direction:column;gap:10px}
+.sheet .stack .btn.block{margin-top:2px}

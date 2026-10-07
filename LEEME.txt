@@ -1,69 +1,75 @@
 CONTROL MANTENIMIENTO
 =====================
-App del área de mantenimiento del club. Los profesores reportan equipo desde Control Gerencia,
-el técnico lo atiende aquí, y gerencia ve el resumen.
+App del área de mantenimiento del club. Los instructores reportan equipo desde Control Fitness, el técnico lo
+atiende aquí, y Control Gerencia ve el resumen.
+Mismo aspecto que Control Gerencia: en computadora, menú lateral; en celular, encabezado con degradado y barra
+inferior flotante. (css/main.css, app-mobile.css y app-desktop.css son los de Gerencia.)
 
 Base de datos: Firebase, proyecto registro-mantenimiento-9854c (Realtime Database).
 Repositorio:   cfitnesscampestre-star/control-mantenimiento (GitHub Pages).
 
+SEMÁFORO DE REPORTES
+--------------------
+ROJO      "nuevo"     nadie lo ha abierto. Siempre rojo, sea normal, urgente o "no se puede usar".
+AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proceso".
+VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
+Filtros de la lista: Todos / No se puede usar / Urgente / Normal.
+
+PANTALLAS
+---------
+Reportes          lista con semáforo, cifras (sin atender, en proceso, resueltos) y filtros por nivel. Al tocar un
+                  reporte se abre: diagnóstico, si requiere compra o cambio y costo estimado.
+Preventivo        revisiones programadas: vencido (rojo), hoy (amarillo) y próximos. "Ya se revisó" la reprograma;
+                  "Posponer" pide motivo y nueva fecha.
+Equipos           catálogo por salón con foto; salones y zonas.
+Reportes gerencia lo que ve Control Gerencia (solo lectura): solo reportes de instructores de Fitness.
+Al final de Reportes hay "Datos de prueba": cargar y borrar reportes de ejemplo.
+
 CÓMO SUBIRLA
 ------------
-1) En el repositorio: "uploading an existing file". Arrastra el CONTENIDO de esta carpeta
-   (index.html, sw.js, manifest.json, LEEME.txt y las carpetas css, js, img), no la carpeta en sí.
-   Commit changes.
-2) Settings -> Pages -> Source: rama main, carpeta / (root) -> Save.
-3) En uno o dos minutos: https://cfitnesscampestre-star.github.io/control-mantenimiento/
-4) En el celular del técnico: abrir esa dirección y "Agregar a pantalla de inicio".
+1) En el repositorio: Add file -> Upload files. Arrastra el CONTENIDO de esta carpeta (index.html, sw.js,
+   manifest.json, LEEME.txt y las carpetas css, js, img), no la carpeta en sí. Commit changes.
+   (Los archivos con el mismo nombre se reemplazan. css/app.css ya no se usa: puedes borrarlo del repositorio.)
+2) Settings -> Pages -> rama main, carpeta / (root).
+3) https://cfitnesscampestre-star.github.io/control-mantenimiento/
+4) Si el celular no toma el cambio, ciérrala por completo y ábrela otra vez.
 
 REGLAS DE FIREBASE
 ------------------
-Realtime Database -> Reglas. Para arrancar y probar:
-  { "rules": { ".read": true, ".write": true } }
-Con reglas abiertas cualquiera que conozca la dirección puede leer o escribir. Antes de usarla con
-los profesores hay que cerrarla con autenticación.
+{ "rules": { ".read": true, ".write": true, "reportes": { ".indexOn": ["profId"] } } }
+Con reglas abiertas cualquiera que conozca la dirección puede leer o escribir. Antes de usarla con todos los
+instructores hay que cerrarla con autenticación.
 
 PRIMER USO
 ----------
-1) Vista Mantenimiento -> Equipos -> botón "Cargar los salones de Fitness": crea Salón 1, Salon Spinning,
-   Salon Yoga, Salon 2, Salon3, Box y CrossFit, con los mismos nombres que en Control Fitness.
-2) Equipos -> Agregar: nombre, salón y nombre del archivo de foto.
-   (O "Cargar catálogo de ejemplo" para probar; luego se edita o se borra.)
-3) Preventivo -> Agregar: qué se revisa, dónde, frecuencia y próxima fecha.
-4) "Profesor (prueba)" sirve para mandar un reporte de prueba y ver el flujo completo antes de
-   conectar Control Gerencia. "Gerencia (vista)" es el resumen de solo lectura.
+1) Equipos -> "Cargar los salones de Fitness": Salón 1, Salon Spinning, Salon Yoga, Salon 2, Salon3, Box y
+   CrossFit, con los mismos nombres que en Control Fitness.
+2) Equipos -> Agregar: nombre, salón y nombre del archivo de foto (o "Cargar catálogo de ejemplo" para probar).
+3) Preventivo -> Agregar revisión: qué se revisa, dónde, frecuencia y próxima fecha.
 
 FOTOS DE EQUIPOS
 ----------------
-Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de archivo
-(ver img/equipos/LEEME.txt).
+Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de archivo (ver img/equipos/LEEME.txt).
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos). Si agregas archivos nuevos en css/,
-js/ o img/, agrégalos a la lista ARCHIVOS de sw.js.
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos). Si agregas archivos nuevos en css/, js/ o img/,
+agrégalos a la lista ARCHIVOS de sw.js.
 
-TIEMPOS EN ROJO
----------------
-js/config.js -> UMBRAL_HORAS: horas sin atender antes de ponerse en rojo
-(normal 24, urgente 4, no se puede usar 2).
-
-ESTRUCTURA DE DATOS (para conectar Control Gerencia)
-----------------------------------------------------
+ESTRUCTURA DE DATOS
+-------------------
 /salones/{id}    { nombre, area }
 /equipos/{id}    { nombre, salonId, foto }
 /reportes/{id}   reportes ABIERTOS:
-                 { equipoId, desc, urg: "normal"|"urgente"|"fuera", profId, prof, area, clase,
-                   salonId, otroLugar, creado (ms), estado: "nuevo"|"atencion"|"resuelto",
-                   diag, compra, cambio, costo, resuelto (ms) }
-/historial/{id}  reportes que el profesor ya eliminó (se mueven aquí con cerrado = ms)
+                 { equipoId, desc, urg: "normal"|"urgente"|"fuera", profId, prof, area, clase, salonId, otroLugar,
+                   creado (ms), estado: "nuevo"|"atencion"|"resuelto", visto (ms), diag, compra, cambio, costo,
+                   resuelto (ms), origen: "fitness" (opcional) }
+/historial/{id}  reportes que el instructor ya eliminó (se mueven aquí con cerrado = ms)
 /preventivo/{id} { titulo, detalle, salonId, freq (días), proxima (ms), posp[], hist[] }
-
-Control Gerencia solo debe ESCRIBIR en /reportes/{id} (una clave nueva por reporte) y quitar el
-reporte al "eliminar aviso" moviéndolo a /historial. Nunca reescribir nodos completos.
+Control Gerencia reconoce un reporte de Fitness por origen:"fitness" o porque profId es el número de instructor.
 
 LÍMITES CONOCIDOS
 -----------------
 - Sin internet: los cambios se envían al volver la señal, pero solo si la app sigue abierta.
-  Si se cierra antes, se pierden.
 - Sin PIN ni autenticación todavía.
 - El repositorio es público: el código y las fotos de los equipos son visibles con el enlace.

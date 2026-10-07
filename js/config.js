@@ -10,6 +10,3 @@ const FIREBASE_MANT = {
   projectId:   'registro-mantenimiento-9854c',
   appId:       '1:712713568770:web:a0e514012ecd34e9b8dd1b'
 };
-
-/* Horas sin atender para que un reporte se ponga en rojo, según su urgencia. */
-const UMBRAL_HORAS = { normal: 24, urgente: 4, fuera: 2 };
