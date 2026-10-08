@@ -21,11 +21,19 @@ var URG_TXT = { normal: 'Normal', urgente: 'Urgente', fuera: 'No se puede usar' 
 var SALONES_FITNESS = [['salon-1', 'Salón 1', 'Salones'], ['salon-spinning', 'Salon Spinning', 'Spinning'], ['salon-yoga', 'Salon Yoga', 'Yoga'],
   ['salon-2', 'Salon 2', 'Salones'], ['salon-3', 'Salon3', 'Salones'], ['box', 'Box', 'Box'], ['crossfit', 'CrossFit', 'CrossFit']];
 
-var DB = { equipos: {}, salones: {}, reportes: {}, preventivo: {}, historial: {}, informes: {} };
+var DB = { equipos: {}, salones: {}, reportes: {}, preventivo: {}, historial: {}, informes: {}, prevlog: {}, archivo: {} };
 var db = null, online = false, ready = false, fbError = '';
 var REQ_ACCESO = (typeof REQUIERE_ACCESO !== 'undefined') ? REQUIERE_ACCESO : false;
 var FOTO_OBLIG = (typeof FOTO_DESPUES_OBLIGATORIA !== 'undefined') ? FOTO_DESPUES_OBLIGATORIA : false;
 var auth = null, usuario = null, perfil = null, authListo = false, datosIniciados = false;
+var SHEET_KEY = 'cm_sheet_v1', RESTAURA = null;
+try { RESTAURA = JSON.parse(localStorage.getItem(SHEET_KEY) || 'null'); if (RESTAURA && now() - RESTAURA.t > 12 * 36e5) RESTAURA = null; } catch(e){ RESTAURA = null; }
+function guardaSheet(){        /* recuerda el reporte abierto y lo escrito: si el teléfono recarga la app, se vuelve a abrir donde estaba */
+  try {
+    if (ui.sheet && ui.sheet.k === 'rep') localStorage.setItem(SHEET_KEY, JSON.stringify({ id: ui.sheet.id, sh: ui.sh, t: now() }));
+    else localStorage.removeItem(SHEET_KEY);
+  } catch(e){}
+}
 var FOT = {};      // fotos ya cargadas: FOT[idDelReporte] = { antes, despues } (viven aparte, en /fotos, para no hacer pesada la lista)
 
 /* ---------- utilidades ---------- */
@@ -61,7 +69,7 @@ function durCorta(ms){
 }
 function fechaHora(ts){ return new Date(ts).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }); }
 try { var c0 = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c0) { DB = Object.assign(DB, c0); ready = true; } } catch(e){}
-function cacheSave(){ try { var c = Object.assign({}, DB); delete c.informes; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch(e){} }
+function cacheSave(){ try { var c = Object.assign({}, DB); delete c.informes; delete c.archivo; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch(e){} }
 
 /* ---------- iconos (los mismos trazos que usa Control Gerencia) ---------- */
 var ICONS = {
@@ -104,27 +112,102 @@ function comprime(file, cb){          /* reduce la foto a ~1000 px y calidad med
   img.onerror = function(){ URL.revokeObjectURL(url); cb(null); };
   img.src = url;
 }
-function subeFoto(tipo, file){
-  var sh = ui.sheet; if (!sh || sh.k !== 'rep' || !file) return; var id = sh.id;
-  comprime(file, function(data){
-    if (!data) return toast('No se pudo leer la foto');
-    FOT[id] = Object.assign({}, FOT[id]); FOT[id][tipo] = data; render();
-    var o = {}; o[tipo] = data;
-    db.ref('fotos/' + id).update(o).then(function(){ var f = {}; f[tipo === 'antes' ? 'fotoAntes' : 'fotoDespues'] = true; return actualiza('reportes/' + id, f); })
-      .then(function(){ toast('Foto guardada'); }).catch(function(e){ toast('No se pudo guardar la foto: ' + ((e && e.message) || '')); });
-  });
+function guardaFoto(id, tipo, data){
+  FOT[id] = Object.assign({}, FOT[id]); FOT[id][tipo] = data; softRender();
+  var o = {}; o[tipo] = data;
+  return db.ref('fotos/' + id).update(o).then(function(){ var f = {}; f[tipo === 'antes' ? 'fotoAntes' : 'fotoDespues'] = true; return actualiza('reportes/' + id, f); })
+    .then(function(){ toast('Foto guardada'); }).catch(function(e){ toast('No se pudo guardar la foto: ' + ((e && e.message) || '')); });
 }
+function subeFoto(tipo, file){                 /* foto elegida de la galería o tomada con la cámara del teléfono */
+  var sh = ui.sheet; if (!sh || sh.k !== 'rep' || !file) return; var id = sh.id;
+  comprime(file, function(data){ if (!data) return toast('No se pudo leer la foto'); guardaFoto(id, tipo, data); });
+}
+/* Cámara DENTRO de la app. Al usar la cámara del teléfono, algunos celulares cierran o recargan la app mientras se toma la foto
+   y se perdía la foto y el reporte abierto. Con esta cámara la app nunca se va a segundo plano. */
+var cam = { stream:null, id:null, tipo:null, el:null }, camFallo = false;
+function camCierra(){
+  if (cam.stream) { cam.stream.getTracks().forEach(function(t){ t.stop(); }); }
+  cam.stream = null; if (cam.el && cam.el.parentNode) cam.el.parentNode.removeChild(cam.el); cam.el = null;
+}
+function camAbre(tipo){
+  var sh = ui.sheet; if (!sh || sh.k !== 'rep') return;
+  if (camFallo || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return camGaleria(tipo);
+  camCierra(); cam.id = sh.id; cam.tipo = tipo;
+  var el = document.createElement('div'); el.className = 'cam';
+  el.innerHTML = '<video autoplay playsinline muted></video><div class="cam-bar"><button class="btn" data-cam="x">Cancelar</button><button class="cam-sh" data-cam="shot" aria-label="Tomar foto"></button><button class="btn" data-cam="gal">Galería</button></div>' +
+    '<div class="cam-t">' + (tipo === 'antes' ? 'Foto del ANTES' : 'Foto del DESPUÉS') + '</div>';
+  document.body.appendChild(el); cam.el = el;
+  navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1600 }, height:{ ideal:1200 } }, audio:false }).then(function(st){
+    if (cam.el !== el) { st.getTracks().forEach(function(t){ t.stop(); }); return; }
+    cam.stream = st; var v = el.querySelector('video'); v.srcObject = st; var pr = v.play && v.play(); if (pr && pr.catch) pr.catch(function(){});
+  }).catch(function(){ camCierra(); camFallo = true; toast('No se pudo abrir la cámara dentro de la app. Vuelve a tocar «Tomar foto» para usar la cámara del teléfono.'); });
+}
+function camGaleria(tipo){ var i = document.getElementById('foto_' + tipo); if (i) i.click(); }
+function camDisparo(){
+  var v = cam.el && cam.el.querySelector('video'); if (!v || !v.videoWidth) return toast('Espera un momento, la cámara se está preparando');
+  var k = Math.min(1, 1000 / Math.max(v.videoWidth, v.videoHeight)), c = document.createElement('canvas');
+  c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  var data = c.toDataURL('image/jpeg', 0.62), id = cam.id, tipo = cam.tipo; camCierra();
+  guardaFoto(id, tipo, data);
+}
+document.addEventListener('click', function(e){
+  var b = e.target.closest && e.target.closest('[data-cam]'); if (!b) return;
+  var a = b.getAttribute('data-cam'), tipo = cam.tipo;
+  if (a === 'shot') camDisparo(); else if (a === 'x') camCierra(); else if (a === 'gal') { camCierra(); camGaleria(tipo); }
+});
 function fotosHTML(r){
   var f = FOT[r.id], g = f || {}, hecho = r.estado === 'resuelto';
   var bloque = function(tipo, tit, ayuda){
     var img = g[tipo];
     return '<div class="foto"><div class="foto-t"><b>' + tit + '</b>' + (img ? pill('Tomada', 'ok') : pill('Pendiente', 'mut')) + '</div>' +
       (img ? '<img src="' + img + '" alt="Foto del ' + tit.toLowerCase() + '" data-a="zoom" data-v="' + tipo + '">' : '<div class="foto-v">' + ayuda + '</div>') +
-      (hecho ? '' : '<label class="btn sm foto-b"><input type="file" accept="image/*" capture="environment" data-foto="' + tipo + '" hidden>' + ic('camara') + '<span>' + (img ? 'Cambiar foto' : 'Tomar foto') + '</span></label>') + '</div>';
+      (hecho ? '' : '<button class="btn sm foto-b" data-a="camAbre" data-v="' + tipo + '">' + ic('camara') + '<span>' + (img ? 'Cambiar foto' : 'Tomar foto') + '</span></button>' +
+        '<input type="file" id="foto_' + tipo + '" accept="image/*" data-foto="' + tipo + '" hidden>') + '</div>';
   };
   return '<div class="h2 sm" style="margin:6px 0 8px">Fotos</div><div class="fotos">' +
     bloque('antes', 'Antes', 'Toma una foto de cómo está el equipo al llegar.') + bloque('despues', 'Después', 'Toma una foto cuando quede resuelto.') + '</div>' +
     (f === undefined && !hecho ? '<div class="sub" style="margin-top:-6px">Cargando fotos…</div>' : '');
+}
+
+/* ---------- archivo: lo resuelto hace más de un mes sale de la vista (pero se conserva) ----------
+   Un reporte resuelto hace más de ARCHIVO_DIAS días se mueve de /reportes o /historial a /archivo. No se borra: sigue en la base y en el
+   respaldo automático. Las pantallas de periodos largos (3 meses, 12 meses, Todo, fechas) lo cargan solo cuando hace falta. */
+var ARCHIVO_DIAS = 30, ARCH_KEY = 'cm_archivado_v1', archCargando = false;
+function cargaArchivo(){
+  if (!db || DB.archivoListo || archCargando) return; archCargando = true;
+  db.ref('archivo').once('value').then(function(s){ DB.archivo = s.val() || {}; DB.archivoListo = true; archCargando = false; softRender(); }).catch(function(){ archCargando = false; });
+}
+function archivados(){ return lista('archivo').map(function(r){ return Object.assign({}, r, { cerrada:true, archivada:true }); }); }
+function archivaViejos(){
+  if (!db || !usuario || !ready) return;
+  var ult = 0; try { ult = +localStorage.getItem(ARCH_KEY) || 0; } catch(e){}
+  if (now() - ult < 6 * 36e5) return;                      // una vez cada 6 horas por teléfono
+  var corte = now() - ARCHIVO_DIAS * DAY, up = {}, n = 0;
+  var revisa = function(origen){
+    lista(origen).forEach(function(r){
+      if (r.estado !== 'resuelto' || n >= 150) return;
+      var cuando = r.resuelto || r.cerrado || 0; if (!cuando || cuando > corte) return;
+      var copia = Object.assign({}, r); delete copia.id; copia.archivado = now(); copia.de = origen;
+      up['archivo/' + r.id] = copia; up[origen + '/' + r.id] = null; n++;
+    });
+  };
+  revisa('reportes'); revisa('historial');
+  try { localStorage.setItem(ARCH_KEY, String(now())); } catch(e){}
+  if (!n) return;
+  db.ref().update(up).then(function(){ toast(plu(n, 'reporte resuelto hace más de un mes pasó', 'reportes resueltos hace más de un mes pasaron') + ' al archivo (no se borró).'); })
+    .catch(function(e){ console.warn('Archivo: no se pudo mover (¿ya publicaste las reglas nuevas de Firebase?)', e && e.message); });
+}
+function descargaJSON(nombre, obj){
+  var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(obj)], { type:'application/json' })); a.download = nombre;
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+}
+function respaldoManual(conFotos){
+  if (!db) return toast('Sin conexión con la base de datos');
+  toast('Preparando el respaldo…');
+  var nodos = ['salones', 'equipos', 'reportes', 'historial', 'archivo', 'preventivo', 'prevlog', 'informes', 'usuarios'].concat(conFotos ? ['fotos'] : []), out = {};
+  Promise.all(nodos.map(function(n){ return db.ref(n).once('value').then(function(s){ out[n] = s.val(); }); })).then(function(){
+    descargaJSON('respaldo-mantenimiento-' + fechaInput(now()) + (conFotos ? '-con-fotos' : '') + '.json', out); toast('Respaldo descargado');
+  }).catch(function(e){ toast('No se pudo hacer el respaldo: ' + ((e && e.message) || '')); });
 }
 
 /* ---------- Firebase ---------- */
@@ -135,6 +218,7 @@ function iniciaDatos(){
       function(err){ fbError = 'Firebase: ' + err.message; softRender(); });
   });
   db.ref('historial').limitToLast(200).on('value', function(s){ DB.historial = s.val() || {}; cacheSave(); softRender(); }, function(){});
+  db.ref('prevlog').limitToLast(400).on('value', function(s){ DB.prevlog = s.val() || {}; cacheSave(); softRender(); }, function(){});
   db.ref('informes').limitToLast(30).on('value', function(s){ DB.informes = s.val() || {}; softRender(); }, function(){});
 }
 function cargaPerfil(u){
@@ -255,6 +339,7 @@ function rangoPer(){
 }
 function setPeriodo(R){
   var cerrados = lista('historial').map(function(r){ return Object.assign({}, r, { cerrada:true }); });
+  if (R.desde < now() - ARCHIVO_DIAS * DAY) { cargaArchivo(); cerrados = cerrados.concat(archivados()); }
   return abiertos().concat(cerrados).filter(function(r){ return r.creado >= R.desde && r.creado <= R.hasta; });
 }
 function barraPeriodo(R, total){
@@ -288,6 +373,8 @@ function repCard(r, abre){
   if (r.cerrada) x.push('<small>El instructor ya cerró este aviso</small>');
   if (r.tecnico && r.estado !== 'nuevo') x.push('<small>Atiende: ' + esc(r.tecnico) + '</small>');
   if (r.fotoAntes || r.fotoDespues) x.push('<small>Fotos: antes ' + (r.fotoAntes ? '✓' : '—') + ' · después ' + (r.fotoDespues ? '✓' : '—') + '</small>');
+  var espP = arr(r.piezas).filter(function(p){ return !p.llego; })[0];
+  if (espP) x.push('<small><b>Esperando pieza:</b> ' + esc(espP.desc) + ' · desde ' + fechaHora(espP.pedida) + '</small>');
   if (r.diag) x.push('<small><b>Diagnóstico:</b> ' + esc(r.diag) + '</small>');
   if (r.compra || r.cambio) x.push('<small>' + (r.compra ? 'Requiere compra' : '') + (r.compra && r.cambio ? ' · ' : '') + (r.cambio ? 'Requiere cambio' : '') + (r.costo ? ' · estimado $' + esc(r.costo) : '') + '</small>');
   var inner = '<div class="rep-h">' + pillEstado(r) + pillUrg(r) + (abre ? '<span class="go">' + ic('next') + '</span>' : '') + '</div>' +
@@ -367,12 +454,63 @@ function vReportes(){
       return '<button class="stb ' + x[1] + (ui.estado === x[0] ? ' on' : '') + '" data-a="estado" data-v="' + x[0] + '" aria-pressed="' + (ui.estado === x[0]) + '"><b>' + (cnt[x[0]] || 0) + '</b><span>' + x[2] + '</span></button>';
     }).join('') + '</div>';
 }
+/* ---------- recorrido preventivo por salón ----------
+   El técnico elige el salón del día y ve sus equipos con foto. ROJO = tiene un reporte sin resolver (va primero) o le toca su
+   revisión preventiva; VERDE = al corriente. Al revisarlo se guarda la fecha y vuelve a salirle hasta que se cumpla la frecuencia
+   del salón (equipos/{id}.prevUlt, salones/{id}.prevFreq, bitácora en /prevlog). */
+var PREV_FREQ_DEF = 30;
+function prevFreqSalon(sid){ return +(salonById(sid).prevFreq) || PREV_FREQ_DEF; }
+function eqPrev(e){
+  var reps = abiertos().filter(function(r){ return r.equipoId === e.id && r.estado !== 'resuelto'; }).sort(sortRep), t = now();
+  if (reps.length) {
+    var fuera = reps.some(function(r){ return r.urg === 'fuera'; }), nuevo = reps.some(function(r){ return r.estado === 'nuevo'; });
+    return { c:'rojo', rep:reps, orden:0, t: fuera ? 'Fuera de servicio' : nuevo ? 'Reporte sin atender' : 'Reporte en proceso' };
+  }
+  var fr = prevFreqSalon(e.salonId), vence = e.prevUlt ? e.prevUlt + fr * DAY : 0;
+  if (e.prevPosp && e.prevPosp > t) return { c:'amar', rep:[], orden:2, t:'Pospuesto al ' + fCorta(e.prevPosp) };
+  if (!e.prevUlt) return { c:'rojo', rep:[], orden:1, t:'Sin revisión preventiva' };
+  if (t >= vence) return { c:'rojo', rep:[], orden:1, t:'Preventivo vencido', sub:'Última: ' + hace(e.prevUlt) };
+  return { c:'verde', rep:[], orden:3, t:'Revisado ' + hace(e.prevUlt) };
+}
+function salonResumen(sid){
+  var eqs = lista('equipos').filter(function(e){ return e.salonId === sid; }), n = { rojo:0, amar:0, verde:0, rep:0 };
+  eqs.forEach(function(e){ var p = eqPrev(e); n[p.c]++; if (p.rep.length) n.rep++; });
+  return { total:eqs.length, rojo:n.rojo, amar:n.amar, verde:n.verde, rep:n.rep };
+}
+function vRecorrido(sid){
+  var sal = salonById(sid), eqs = lista('equipos').filter(function(e){ return e.salonId === sid; }).map(function(e){ return { e:e, p:eqPrev(e) }; });
+  eqs.sort(function(a, b){ return a.p.orden - b.p.orden || a.e.nombre.localeCompare(b.e.nombre, 'es', { numeric:true }); });
+  var R = salonResumen(sid), hechos = R.verde + R.amar, pct = R.total ? Math.round(hechos * 100 / R.total) : 0;
+  var l = ui.prevSolo ? eqs.filter(function(x){ return x.p.c === 'rojo'; }) : eqs;
+  var fr = [[7, 'Cada semana'], [15, 'Cada 15 días'], [30, 'Cada mes'], [60, 'Cada 2 meses'], [90, 'Cada 3 meses']], f0 = prevFreqSalon(sid);
+  return '<div class="btns" style="margin-top:0"><button class="btn" data-a="prevSalon" data-v="">' + ic('back') + ' Salones</button></div>' +
+    '<div class="card"><div class="h2 sm" style="margin:0 0 4px">' + esc(sal.nombre) + '</div>' +
+    '<div class="sub" style="margin:0 0 8px">' + (R.rojo ? '<b class="bad">' + plu(R.rojo, 'equipo por atender', 'equipos por atender') + '</b>' + (R.rep ? ' · ' + plu(R.rep, 'con reporte', 'con reporte') : '') : '<b class="ok">Todo el salón está al corriente</b>') + ' · ' + R.verde + ' de ' + R.total + ' en verde</div>' +
+    '<div class="prog"><i style="width:' + pct + '%"></i></div>' +
+    '<div class="two" style="margin-top:10px"><label class="f" style="margin:0"><span>Revisar este salón</span><select data-a-change="prevFreq">' + fr.map(function(x){ return '<option value="' + x[0] + '"' + (f0 === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>' +
+    '<div style="display:flex;align-items:flex-end"><button class="chip' + (ui.prevSolo ? ' on' : '') + '" style="width:100%;justify-content:center" data-a="prevSolo">' + (ui.prevSolo ? 'Viendo solo los rojos' : 'Ver solo los rojos') + '</button></div></div></div>' +
+    (l.length ? '<div class="eqgrid" style="margin-top:12px">' + l.map(function(x){
+      var e = x.e, p = x.p;
+      return '<button class="eq ' + p.c + '" data-a="prevEq" data-v="' + e.id + '"><div class="pic">' + ic('img') + (e.foto ? esc(e.foto) + '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '') + '</div>' +
+        '<div class="inf"><b>' + esc(e.nombre) + '</b>' + pill(p.t, p.c === 'rojo' ? 'bad' : p.c === 'amar' ? 'warn' : 'ok') + (p.sub ? '<small>' + esc(p.sub) + '</small>' : '') + '</div></button>';
+    }).join('') + '</div>' : empty(eqs.length ? 'No hay equipos en rojo en este salón.' : 'Este salón todavía no tiene equipos. Dalos de alta en la pestaña Equipos.'));
+}
 function vPreventivo(){
+  if (ui.prevSalon && DB.salones[ui.prevSalon]) return vRecorrido(ui.prevSalon);
+  var sal = lista('salones').filter(function(x){ return lista('equipos').some(function(e){ return e.salonId === x.id; }); }).map(function(x){ return { s:x, r:salonResumen(x.id) }; })
+    .sort(function(a, b){ return (b.r.rep - a.r.rep) || (b.r.rojo - a.r.rojo) || a.s.nombre.localeCompare(b.s.nombre, 'es', { numeric:true }); });
   var l = lista('preventivo').sort(function(a, b){ return a.proxima - b.proxima; });
   var ven = l.filter(function(p){ return diasPrev(p) < 0; }), hoy = l.filter(function(p){ return diasPrev(p) === 0; }), prox = l.filter(function(p){ return diasPrev(p) > 0; });
   var grid = function(x){ return '<div class="replist">' + x.map(function(p){ return prevCard(p); }).join('') + '</div>'; };
-  return '<div class="sub">' + esc(fechaTxt(sod(now()))) + '</div><div class="btns" style="margin-top:0;margin-bottom:6px"><button class="btn primary" data-a="prevNew">' + ic('plus') + ' Agregar revisión</button></div>' +
-    (!l.length ? empty('Todavía no hay revisiones programadas. Toca “Agregar revisión” para crear la primera, con su frecuencia.') : '') +
+  return '<div class="sub">' + esc(fechaTxt(sod(now()))) + '</div><div class="h2 sm" style="margin-top:2px">Recorrido por salón</div>' +
+    '<div class="sub" style="margin-top:-4px">Elige el salón de hoy. Los equipos en rojo son los que necesitan atención: primero los que tienen reporte, luego los que les toca su revisión.</div>' +
+    (sal.length ? '<div class="salgrid">' + sal.map(function(x){
+      var r = x.r, c = r.rojo ? 'rojo' : 'verde', pct = r.total ? Math.round((r.verde + r.amar) * 100 / r.total) : 0;
+      return '<button class="salc ' + c + '" data-a="prevSalon" data-v="' + x.s.id + '"><div class="salc-h"><b>' + esc(x.s.nombre) + '</b>' + (r.rojo ? pill(r.rojo + ' en rojo', 'bad big') : pill('Al corriente', 'ok big')) + '</div>' +
+        '<small>' + (r.rep ? '<b>' + plu(r.rep, 'equipo con reporte', 'equipos con reporte') + '</b> · ' : '') + r.verde + ' de ' + r.total + ' en verde</small><div class="prog"><i style="width:' + pct + '%"></i></div></button>';
+    }).join('') + '</div>' : empty('Todavía no hay equipos dados de alta. Entra a Equipos para cargarlos por salón.')) +
+    '<div class="h2 sm">Revisiones programadas</div><div class="btns" style="margin-top:0;margin-bottom:6px"><button class="btn primary" data-a="prevNew">' + ic('plus') + ' Agregar revisión</button></div>' +
+    (!l.length ? empty('No hay revisiones programadas aparte del recorrido. Sirven para tareas generales (por ejemplo, “fumigar”).') : '') +
     (ven.length ? '<div class="h2 sm"><span class="bad">Vencido · ' + ven.length + '</span></div>' + grid(ven) : '') +
     (l.length ? '<div class="h2 sm">Para hoy · ' + hoy.length + '</div>' + (hoy.length ? grid(hoy) : empty('Nada más para hoy.')) +
       '<div class="h2 sm">Próximos</div>' + (prox.length ? grid(prox) : empty('No hay preventivos próximos.')) : '');
@@ -406,7 +544,13 @@ function vGerencia(){
     '<div class="kpis k3">' + infKpiBtn('ven', 'Preventivos vencidos', ven.length, ven.length ? 'revisión atrasada' : 'al corriente', { cls: ven.length ? 'bad' : 'ok', color: 'var(--bad)' }) +
       infKpiBtn('posp', 'Pospuestos', pospN, 'veces que se movió una revisión', { color: 'var(--b3)' }) +
       infKpiBtn('compras', 'Compras o cambios', compras.length, total ? 'estimado $' + total.toLocaleString('es-MX') : 'por autorizar', { color: 'var(--b2)' }) + '</div>' +
-    infGeneradorHTML() + infEnviadosHTML();
+    infGeneradorHTML() + infEnviadosHTML() + respaldoCard();
+}
+
+function respaldoCard(){
+  return '<div class="card" style="margin-top:14px"><div class="h2 sm" style="margin:0 0 4px">Respaldo de la información</div>' +
+    '<div class="sub" style="margin:0 0 10px">Los reportes resueltos hace más de ' + ARCHIVO_DIAS + ' días salen de la vista y pasan al archivo, pero no se borran. Además, GitHub guarda un respaldo automático cada día (ver LEEME). Aquí puedes bajar una copia a mano.</div>' +
+    '<div class="btns" style="margin-top:0"><button class="btn" data-a="respaldo">Descargar respaldo (sin fotos)</button><button class="btn" data-a="respaldoFotos">Con fotos</button></div></div>';
 }
 
 /* ---------- hojas (ventana emergente, igual que en Gerencia) ---------- */
@@ -414,13 +558,40 @@ function mHead(t){ return '<div class="sh-h"><b>' + esc(t) + '</b><button class=
 function opcionesSalon(sel, vacio){
   return (vacio ? '<option value="">' + vacio + '</option>' : '') + lista('salones').map(function(s){ return '<option value="' + s.id + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.nombre) + ' · ' + esc(s.area) + '</option>'; }).join('');
 }
+function msPiezas(r, hasta){                 /* tiempo total esperando piezas (lo que sigue pendiente cuenta hasta "hasta") */
+  return arr(r.piezas).reduce(function(n, x){ return n + Math.max(0, (x.llego || hasta) - x.pedida); }, 0);
+}
 function tiemposHTML(r){
   var fila = function(t, v){ return '<div class="row"><div><b>' + t + '</b><small>' + v + '</small></div></div>'; };
-  return '<div class="card" style="margin-bottom:14px"><div class="h2 sm" style="margin:0 0 8px">Tiempos</div>' +
+  var fin = r.estado === 'resuelto' ? (r.resuelto || now()) : now(), pz = arr(r.piezas);
+  var h = '<div class="card" style="margin-bottom:14px"><div class="h2 sm" style="margin:0 0 8px">Tiempos</div>' +
     fila('Llegó', fechaHora(r.creado)) +
     (r.tecnico ? fila('Atiende', esc(r.tecnico)) : '') +
-    fila('Lo abrió mantenimiento', r.visto ? fechaHora(r.visto) + ' · tardó ' + durCorta(r.visto - r.creado) : 'Todavía no') +
-    (r.estado === 'resuelto' ? fila('Resuelto', fechaHora(r.resuelto || now()) + ' · en proceso ' + durCorta((r.resuelto || now()) - (r.visto || r.creado))) : '') + '</div>';
+    fila('Lo abrió mantenimiento', r.visto ? fechaHora(r.visto) + ' · tardó ' + durCorta(r.visto - r.creado) : 'Todavía no');
+  pz.forEach(function(x){
+    h += fila('Pidió pieza: ' + esc(x.desc), fechaHora(x.pedida) + ' · ' + durCorta(x.pedida - (r.visto || r.creado)) + ' después de abrirlo');
+    h += fila(x.llego ? 'Llegó la pieza' : 'Esperando la pieza', x.llego ? fechaHora(x.llego) + ' · esperó ' + durCorta(x.llego - x.pedida) : 'lleva ' + durCorta(now() - x.pedida));
+  });
+  if (pz.length) { var mp = msPiezas(r, fin); h += fila('Total esperando piezas', durCorta(mp)); }
+  if (r.estado === 'resuelto') {
+    var tot = (r.resuelto || now()) - (r.visto || r.creado), mp2 = msPiezas(r, r.resuelto || now());
+    h += fila('Resuelto', fechaHora(r.resuelto || now()) + ' · en proceso ' + durCorta(tot) + (mp2 ? ' (de eso, ' + durCorta(mp2) + ' esperando piezas; trabajo ' + durCorta(Math.max(0, tot - mp2)) + ')' : ''));
+  }
+  return h + '</div>';
+}
+function piezaHTML(r, sh, hecho){
+  if (hecho) return '';
+  var pz = arr(r.piezas), esp = pz.filter(function(x){ return !x.llego; })[0];
+  if (esp) {
+    return '<div class="card pieza esp" style="margin-bottom:14px"><div class="h2 sm" style="margin:0 0 6px">Esperando pieza</div>' +
+      '<b>' + esc(esp.desc) + '</b><small class="mut" style="display:block">Pedida ' + fechaHora(esp.pedida) + '</small>' +
+      '<div class="rep-time" style="margin-top:8px;border:0;padding-top:0">' + ic('reloj') + '<span>Lleva esperando</span><b class="timer" data-t0="' + esp.pedida + '">' + dur(now() - esp.pedida) + '</b></div>' +
+      '<button class="btn primary block" style="margin-top:10px" data-a="piezaLlego">Ya llegó la pieza (seguir con el trabajo)</button></div>';
+  }
+  return '<div class="card pieza" style="margin-bottom:14px"><div class="h2 sm" style="margin:0 0 6px">¿Hace falta una pieza?</div>' +
+    '<label class="f" style="margin-bottom:8px"><span>Qué pieza o material se necesita</span><input data-f="pieza" placeholder="Ej. Pedal izquierdo" value="' + esc(sh.pieza || '') + '"></label>' +
+    '<button class="btn block" data-a="piezaPide">Pedir pieza (marca la hora)</button>' +
+    '<small class="mut" style="display:block;margin-top:6px">Se guarda la hora en que la pediste y cuánto tarda en llegar. Aparece en “Compras o cambios”.</small></div>';
 }
 function sheetCal(){
   var hoy = fechaInput(sod(now())), q = [['pend', 'Pendientes'], ['hoy', 'Hoy'], ['7', '7 días'], ['30', '30 días'], ['90', '3 meses'], ['365', '12 meses'], ['mes', 'Este mes'], ['all', 'Todo']];
@@ -436,7 +607,7 @@ function sheetRep(){
   return mHead(e.nombre) +
     '<div class="rep ' + semaforo(r) + '" style="margin-bottom:14px"><div class="rep-h">' + pillEstado(r) + pillUrg(r) + '</div>' +
     '<span class="rep-d">' + esc(r.desc) + '</span><small>' + esc(eqLugar(e)) + ' · ' + esc(r.prof || 'Instructor') + (r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · ' + hace(r.creado) + '</small>' +
-    timerHTML(r) + '</div>' + tiemposHTML(r) + fotosHTML(r) +
+    timerHTML(r) + '</div>' + tiemposHTML(r) + fotosHTML(r) + piezaHTML(r, sh, hecho) +
     '<label class="f"><span>Qué encontraste y qué hiciste</span><textarea data-f="diag"' + (hecho ? ' disabled' : '') + ' placeholder="Describe la anomalía y la atención">' + esc(sh.diag) + '</textarea></label>' +
     '<label class="chk"><input type="checkbox" data-f="compra"' + (sh.compra ? ' checked' : '') + (hecho ? ' disabled' : '') + '> Necesita comprar algo</label>' +
     '<label class="chk"><input type="checkbox" data-f="cambio"' + (sh.cambio ? ' checked' : '') + (hecho ? ' disabled' : '') + '> Necesita cambio de pieza o equipo</label>' +
@@ -478,6 +649,22 @@ function sheetEq(){
     '<div class="h2 sm">Historial</div>' + (h.length ? '<div class="stack">' + h.map(function(r){
       return '<div class="rep ' + (r.cerrado ? 'verde' : semaforo(r)) + '"><div class="rep-h">' + (r.cerrado ? pill('Cerrado', 'ok big') : pillEstado(r)) + '<span class="go mut" style="font-size:12.5px">' + hace(r.creado) + '</span></div><span class="rep-d">' + esc(r.desc) + '</span>' + (r.diag ? '<small>' + esc(r.diag) + '</small>' : '') + '</div>';
     }).join('') + '</div>' : empty('Este equipo no tiene reportes.'));
+}
+function sheetPrevEq(){
+  var raw = DB.equipos[ui.sheet.id]; if (!raw) return '';
+  var e = eqById(ui.sheet.id), p = eqPrev(e), sh = ui.sh;
+  var log = lista('prevlog').filter(function(x){ return x.equipoId === e.id; }).sort(function(a, b){ return b.t - a.t; }).slice(0, 4);
+  return mHead(e.nombre) +
+    '<div class="eq ' + p.c + '" style="margin-bottom:12px"><div class="pic">' + ic('img') + esc(e.foto || '') + (e.foto ? '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div></div>' +
+    '<div class="sub" style="margin:0 0 6px">' + esc(eqLugar(e)) + '</div>' + pill(p.t, (p.c === 'rojo' ? 'bad' : p.c === 'amar' ? 'warn' : 'ok') + ' big') +
+    (p.rep.length ? '<div class="h2 sm">Primero atiende ' + (p.rep.length > 1 ? 'estos reportes' : 'este reporte') + '</div><div class="stack">' + p.rep.map(function(r){ return repCard(r, true); }).join('') + '</div>' : '') +
+    '<div class="h2 sm">Revisión preventiva</div>' +
+    '<div class="sub" style="margin:-4px 0 8px">' + (e.prevUlt ? 'Última revisión: ' + fechaHora(e.prevUlt) + (e.prevPor ? ' · ' + esc(e.prevPor) : '') : 'Todavía no tiene revisión preventiva registrada.') + ' Se vuelve a pedir cada ' + plu(prevFreqSalon(e.salonId), 'día', 'días') + '.</div>' +
+    '<label class="f"><span>Qué revisaste o ajustaste (opcional)</span><textarea data-f="nota" placeholder="Ej. Se apretó tornillería y se lubricó">' + esc(sh.nota || '') + '</textarea></label>' +
+    '<button class="btn cta block" data-a="prevEqHecho">Revisión preventiva hecha</button>' +
+    '<div class="two" style="margin-top:12px;align-items:end"><label class="f" style="margin:0"><span>O posponer (evento, falta de tiempo)</span><input type="date" data-f="posp" min="' + fechaInput(sod(now()) + DAY) + '" value="' + esc(sh.posp || '') + '"></label>' +
+    '<button class="btn" data-a="prevEqPosp">Posponer</button></div>' +
+    (log.length ? '<div class="h2 sm">Últimas revisiones</div><div class="card">' + log.map(function(x){ return '<div class="row"><div><b>' + fechaHora(x.t) + (x.por ? ' · ' + esc(x.por) : '') + '</b>' + (x.nota ? '<small>' + esc(x.nota) + '</small>' : '') + '</div></div>'; }).join('') + '</div>' : '');
 }
 function sheetQR(){
   var raw = DB.equipos[ui.sheet.id]; if (!raw) return '';
@@ -636,7 +823,7 @@ function cloud(){
   return fbError ? { cls:'bad', txt:'Sin conexión con la base' } : online ? { cls:'on', txt:'Conectado' } : { cls:'warn', txt:'Sin internet' };
 }
 function badgeNav(id){
-  var n = id === 'reportes' ? abiertos().filter(function(r){ return r.estado === 'nuevo'; }).length : id === 'preventivo' ? lista('preventivo').filter(function(p){ return diasPrev(p) < 0; }).length : 0;
+  var n = id === 'reportes' ? abiertos().filter(function(r){ return r.estado === 'nuevo'; }).length : id === 'preventivo' ? lista('preventivo').filter(function(p){ return diasPrev(p) < 0; }).length + lista('equipos').filter(function(e){ return eqPrev(e).c === 'rojo'; }).length : 0;
   return n ? '<span class="pill bad" style="margin-left:auto;padding:1px 8px">' + n + '</span>' : '';
 }
 function sidebar(){
@@ -686,6 +873,11 @@ function render(){
     var m0 = document.getElementById('modal'); m0.hidden = true; m0.innerHTML = ''; document.body.style.overflow = '';
     return;
   }
+  if (RESTAURA && DB.reportes && DB.reportes[RESTAURA.id] && !ui.sheet) {
+    ui.tab = 'reportes'; ui.sheet = { k:'rep', id: RESTAURA.id }; ui.sh = Object.assign({ diag:'', compra:false, cambio:false, costo:'' }, RESTAURA.sh || {});
+    if (FOT[RESTAURA.id] === undefined) cargaFotos(RESTAURA.id);
+  }
+  if (ready) RESTAURA = null;
   var car0 = document.querySelector('.carr'), sl = car0 && !ui.reset ? car0.scrollLeft : 0, sy = window.pageYOffset || 0;
   var sh0 = document.querySelector('#modal .sheet'), ss = sh0 ? sh0.scrollTop : 0; ui.reset = false;
   if (EQ_LINK && DB.equipos) {              /* abierto desde un QR: mostrar la ficha de ese equipo */
@@ -698,13 +890,14 @@ function render(){
     : !online ? '<div class="vinc off"><b>Sin internet</b><span>Los cambios se envían al volver la señal. No cierres la app hasta entonces.</span></div>' : '';
   document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + errBanner + body + '</main></div>' + bottomnav() + '</div>';
   var m = document.getElementById('modal'), k = ui.sheet && ui.sheet.k, html = '';
-  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
+  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'prevEq' ? sheetPrevEq() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
   if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
   else { m.hidden = true; m.innerHTML = ''; document.body.style.overflow = ''; }
   if (k === 'infdoc') infMonta();
   var car1 = document.querySelector('.carr'); if (car1) { car1.scrollLeft = sl; carrN(); }
   var sh1 = document.querySelector('#modal .sheet'); if (sh1 && ss) sh1.scrollTop = ss;
   if (sy) window.scrollTo(0, sy);
+  guardaSheet();
 }
 function escribiendo(){ var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
 function softRender(){ if (escribiendo() || (ui.sheet && ui.sheet.k === 'infdoc')) { ui.dirty = true; return; } render(); }
@@ -731,6 +924,9 @@ var A = {
     db.ref('usuarios/' + usuario.uid).set({ nombre:n, email:usuario.email || '', creado: now() }).then(function(){ toast('Listo, ' + n); }).catch(function(e){ toast('No se pudo guardar: ' + e.message); });
     perfil = { nombre:n }; ui.sheet = null; render();
   },
+  camAbre:function(v){ camAbre(v); },
+  respaldo:function(){ respaldoManual(false); },
+  respaldoFotos:function(){ respaldoManual(true); },
   zoom:function(v){ var f = FOT[ui.sheet && ui.sheet.id] || {}; if (f[v]) { ui.zoom = f[v]; render(); } },
   zoomCierra:function(){ ui.zoom = null; render(); },
   tab:function(v){ ui.tab = v; ui.sheet = null; ui.areaF = 'Todos'; render(); top0(); },
@@ -770,8 +966,37 @@ var A = {
     }
     var id = ui.sheet.id, s = ui.sh, raw = DB.reportes[id] || {}, t = now(), cre = raw.creado || t, vis = raw.visto || t; ui.sheet = null;
     /* se guardan las fechas y los tiempos (ms) para el control de tiempos y los reportes futuros */
-    actualiza('reportes/' + id, { estado:'resuelto', resuelto:t, visto:vis, msRespuesta:vis - cre, msAtencion:t - vis, msTotal:t - cre, resueltoPor:nombreTec(), diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }); render();
+    var pz = arr(raw.piezas).map(function(x){ return x.llego ? x : Object.assign({}, x, { llego:t }); }), mp = msPiezas({ piezas:pz }, t);
+    actualiza('reportes/' + id, { estado:'resuelto', resuelto:t, visto:vis, msRespuesta:vis - cre, msAtencion:t - vis, msTotal:t - cre, msPieza: pz.length ? mp : undefined, msTrabajo: pz.length ? Math.max(0, t - vis - mp) : undefined,
+      piezas: pz.length ? pz : undefined, esperaPieza:false, resueltoPor:nombreTec(), diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }); render();
     toast('Resuelto. Se avisó al instructor y a gerencia.');
+  },
+  piezaPide:function(){
+    var id = ui.sheet.id, r = DB.reportes[id], d = (ui.sh.pieza || '').trim(); if (!r) return;
+    if (!d) return toast('Escribe qué pieza o material se necesita');
+    var pz = arr(r.piezas).concat([{ desc:d, pedida:now(), por:nombreTec() }]);
+    ui.sh.pieza = ''; ui.sh.compra = true;
+    actualiza('reportes/' + id, { piezas:pz, esperaPieza:true, compra:true, diag:ui.sh.diag, cambio:ui.sh.cambio, costo:ui.sh.costo }); render();
+    toast('Pieza pedida. Quedó marcada la hora.');
+  },
+  piezaLlego:function(){
+    var id = ui.sheet.id, r = DB.reportes[id]; if (!r) return;
+    var t = now(), pz = arr(r.piezas).map(function(x){ return x.llego ? x : Object.assign({}, x, { llego:t }); });
+    actualiza('reportes/' + id, { piezas:pz, esperaPieza:false }); render(); toast('Listo. Se registró la hora en que llegó la pieza.');
+  },
+  /* recorrido preventivo por salón */
+  prevSalon:function(v){ ui.prevSalon = v || null; ui.prevSolo = false; ui.reset = true; render(); top0(); },
+  prevSolo:function(){ ui.prevSolo = !ui.prevSolo; render(); },
+  prevEq:function(v){ ui.sheet = { k:'prevEq', id:v }; ui.sh = { nota:'', posp:'' }; render(); },
+  prevEqHecho:function(){
+    var id = ui.sheet.id, e = DB.equipos[id]; if (!e) return; var t = now(), nota = (ui.sh.nota || '').trim();
+    actualiza('equipos/' + id, { prevUlt:t, prevPor:nombreTec(), prevPosp:null });
+    guarda('prevlog/' + nuevoId('prevlog'), limpia({ equipoId:id, salonId:e.salonId, t:t, por:nombreTec(), nota:nota || undefined }));
+    ui.sheet = null; render(); toast('Revisión guardada. Próxima: en ' + plu(prevFreqSalon(e.salonId), 'día', 'días'));
+  },
+  prevEqPosp:function(){
+    var id = ui.sheet.id, f = ui.sh.posp; if (!f) return toast('Elige hasta qué fecha se pospone');
+    var d = new Date(f + 'T00:00:00').getTime(); ui.sheet = null; actualiza('equipos/' + id, { prevPosp:d }); render(); toast('Pospuesto al ' + fechaTxt(d));
   },
   /* preventivo */
   prevDone:function(v){ var p = DB.preventivo[v]; if (!p) return; var h = arr(p.hist).concat([now()]), pr = sod(now()) + p.freq * DAY; actualiza('preventivo/' + v, { hist:h, proxima:pr }); toast('Revisado. Próxima vez: ' + fechaTxt(pr)); },
@@ -894,9 +1119,14 @@ document.addEventListener('change', function(e){
   if (t && t.hasAttribute && t.hasAttribute('data-imp') && t.files && t.files[0]) { impArchivo(t.files[0]); t.value = ''; return; }
   if (tipo && t.files && t.files[0]) { subeFoto(tipo, t.files[0]); t.value = ''; }
 });
+document.addEventListener('change', function(e){
+  var t = e.target; if (t && t.getAttribute && t.getAttribute('data-a-change') === 'prevFreq' && ui.prevSalon) {
+    actualiza('salones/' + ui.prevSalon, { prevFreq:+t.value }); toast('Este salón se revisa cada ' + plu(+t.value, 'día', 'días'));
+  }
+});
 document.addEventListener('input', function(e){
   var t = e.target, f = t.getAttribute && t.getAttribute('data-f');
-  if (f && ui.sh) ui.sh[f] = t.type === 'checkbox' ? t.checked : t.value;
+  if (f && ui.sh) { ui.sh[f] = t.type === 'checkbox' ? t.checked : t.value; guardaSheet(); }
 });
 document.addEventListener('focusout', function(){ setTimeout(function(){ if (ui.dirty && !escribiendo()) render(); }, 150); });
 document.addEventListener('error', function(e){ var t = e.target; if (t && t.tagName === 'IMG' && t.hasAttribute('data-fallback')) { t.style.display = 'none'; if (t.parentNode) t.parentNode.classList.add('nofoto'); } }, true);
@@ -905,5 +1135,6 @@ if (window.matchMedia) { var mq = window.matchMedia('(min-width: 900px)'); var o
 initFB();
 render();
 setInterval(carAvanza, CAR_SEG * 1000);
+setInterval(function(){ archivaViejos(); }, 60000); setTimeout(archivaViejos, 8000);
 setInterval(tick, 1000);                                                          // cronómetros
 setInterval(function(){ if (!escribiendo() && !ui.sheet) render(); }, 300000);   // refresca etiquetas

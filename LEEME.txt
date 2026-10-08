@@ -15,6 +15,29 @@ AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proc
 VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
 Cada reporte lleva un cronómetro que corre desde que llega y se detiene al resolverse.
 
+NOVEDADES DE LA VERSION 14 (8-oct-2026)
+----------------------------------------
+1) FOTOS: ahora "Tomar foto" abre la cámara DENTRO de la app (no la del teléfono). Antes, al salir a la cámara del teléfono, algunos
+   celulares cerraban o recargaban la app y se perdían la foto y el reporte abierto. Además la app recuerda el reporte abierto y lo
+   escrito (12 h): si el teléfono la recarga, vuelve a abrirse en el mismo reporte. Si la cámara interna no abre (permiso negado),
+   el botón usa la cámara/galería del teléfono. La primera vez el teléfono pide permiso de cámara: hay que aceptar.
+2) PREVENTIVO POR SALON: pestaña Preventivo = tarjetas de salones (en rojo si tienen equipos pendientes). Al abrir un salón salen
+   sus equipos con foto: ROJO = reporte sin resolver (van primero) o preventivo vencido/sin revisión; VERDE = al corriente;
+   AMARILLO = pospuesto. Tocar un equipo: arriba los reportes abiertos para atenderlos; abajo "Revisión preventiva hecha" (con nota
+   opcional) que guarda fecha, quién y vuelve a salir hasta cumplir la frecuencia del salón (se elige en el salón: semana, 15 días, mes
+   [por defecto], 2 o 3 meses). También "Posponer" a una fecha (evento). Bitácora en /prevlog. Las "Revisiones programadas" de antes
+   siguen abajo para tareas generales.
+3) PIEZAS: en el reporte, "¿Hace falta una pieza?": se escribe cuál y "Pedir pieza (marca la hora)"; queda en amarillo "Esperando
+   pieza" con cronómetro; "Ya llegó la pieza" marca la hora. Se guardan piezas[{desc,pedida,llego}], msPieza (tiempo esperando
+   piezas) y msTrabajo (tiempo de proceso sin la espera). Pedir pieza marca "necesita comprar" para que salga en Compras o cambios.
+   Los informes muestran la pieza y cuánto esperó.
+4) ARCHIVO A UN MES: los reportes resueltos hace más de 30 días salen de la vista y pasan a /archivo (no se borran; se hace solo
+   cuando el técnico tiene la app abierta). Los informes de periodos largos (3 meses, 12 meses, Todo) los cargan cuando hacen falta.
+5) RESPALDO: (a) Reportes gerencia -> "Respaldo de la información" -> descargar JSON (con o sin fotos). (b) Respaldo automático
+   diario en GitHub: ver la carpeta respaldo-privado/LEEME-RESPALDO.txt (va en un repositorio PRIVADO aparte).
+IMPORTANTE al subir la v14: publica primero las reglas nuevas de reglas-firebase.txt (agregan /archivo y /prevlog); sin ellas la
+bitácora preventiva y el archivo no se pueden guardar.
+
 PANTALLAS
 ---------
 Reportes          arriba, una barra con el día de hoy y el botón "Fechas" (calendario) para elegir el periodo:
@@ -27,7 +50,7 @@ Reportes          arriba, una barra con el día de hoy y el botón "Fechas" (cal
                   tocar uno solo salen los de ese estado (al tocarlo otra vez se quita). El filtro por urgencia
                   (No se puede usar / Urgente / Normal) está oculto: se abre con el botón "Urgencia".
                   Al tocar un reporte se abre: tiempos, diagnóstico, si requiere compra o cambio y costo estimado.
-Preventivo        revisiones programadas: vencido (rojo), hoy (amarillo) y próximos. "Ya se revisó" la reprograma;
+Preventivo        recorrido por salón (ver novedades v14) y, abajo, revisiones programadas: vencido (rojo), hoy (amarillo) y próximos. "Ya se revisó" la reprograma;
                   "Posponer" pide motivo y nueva fecha.
 Equipos           catálogo por salón con foto; salones y zonas.
 Reportes gerencia lo que ve Control Gerencia (solo lectura): reportes de instructores de Fitness y de los profesores de las áreas de Gerencia.
@@ -126,7 +149,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 12). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 14). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL
@@ -180,6 +203,9 @@ ESTRUCTURA DE DATOS
                    fotoAntes, fotoDespues (indicadores; las fotos están en /fotos),
                    origen: "fitness" (opcional) }
 /historial/{id}  reportes que el instructor ya eliminó (se mueven aquí con cerrado = ms)
+/prevlog/{id}    { equipoId, salonId, t, por, nota }  bitácora de revisiones preventivas
+/archivo/{id}    reportes resueltos hace más de 30 días (copia del reporte + archivado, de)
+/equipos/{id}    además: prevUlt (última revisión), prevPor, prevPosp (pospuesto hasta); /salones/{id}.prevFreq (días)
 /preventivo/{id} { titulo, detalle, salonId, freq (días), proxima (ms), posp[], hist[] }
 /fotos/{id del reporte} { antes, despues }  fotos reducidas (texto "data:image/jpeg;base64,...")
 /usuarios/{uid}  { nombre, email }  técnicos que han entrado

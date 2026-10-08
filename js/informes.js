@@ -54,7 +54,10 @@ var INF_RAP = {
 };
 
 /* ---------- datos ---------- */
-function infRepsAll(){ return abiertos().filter(esGerencia).concat(lista('historial').filter(esGerencia).map(function(r){ return Object.assign({}, r, { cerrada:true }); })); }
+function infRepsAll(){
+  var hist = lista('historial').concat(DB.archivoListo ? archivados() : []);
+  return abiertos().filter(esGerencia).concat(hist.filter(esGerencia).map(function(r){ return Object.assign({}, r, { cerrada:true }); }));
+}
 function infAreaDe(r){ return (r.origen === 'gerencia' && r.area) ? r.area : eqArea(eqById(r.equipoId)); }
 function infOrigen(r){ return esFitness(r) ? 'fitness' : 'gerencia'; }
 function infTec(r){ return r.resueltoPor || r.tecnico || ''; }
@@ -65,6 +68,7 @@ function fFecha(ts){ return new Date(ts).toLocaleDateString('es-MX', { day:'2-di
 
 function infReps(c, forzar){
   var R = infRango(c), fp = (forzar && forzar.fechaPor) || c.fechaPor, st = (forzar && forzar.estado) || c.estado;
+  if ((!R || R.desde < now() - ARCHIVO_DIAS * DAY) && st !== 'nuevo' && st !== 'atencion' && st !== 'pend') cargaArchivo();   // lo archivado ya está resuelto
   return infRepsAll().filter(function(r){
     if (R) { var t = fp === 'resuelto' ? r.resuelto : r.creado; if (!t || t < R.desde || t > R.hasta) return false; }
     if (st === 'nuevo' || st === 'atencion' || st === 'resuelto') { if (r.estado !== st) return false; }
@@ -129,7 +133,7 @@ function infSecRep(titulo, l){
       infTec(r) || '—',
       resp != null ? durCorta(resp) : '—',
       tot != null ? durCorta(tot) : 'En curso\n' + durCorta(now() - r.creado),
-      (cp || '—') + (r.costo ? '\n$' + r.costo : '')
+      (cp || '—') + arr(r.piezas).map(function(x){ return '\n' + x.desc + (x.llego ? ' · esperó ' + durCorta(x.llego - x.pedida) : ' · esperando'); }).join('') + (r.costo ? '\n$' + r.costo : '')
     ]);
     s.sem.push(semaforo(r));
   });
