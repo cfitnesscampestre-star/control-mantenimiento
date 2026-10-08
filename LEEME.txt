@@ -30,7 +30,7 @@ Reportes          arriba, una barra con el día de hoy y el botón "Fechas" (cal
 Preventivo        revisiones programadas: vencido (rojo), hoy (amarillo) y próximos. "Ya se revisó" la reprograma;
                   "Posponer" pide motivo y nueva fecha.
 Equipos           catálogo por salón con foto; salones y zonas.
-Reportes gerencia lo que ve Control Gerencia (solo lectura): solo reportes de instructores de Fitness.
+Reportes gerencia lo que ve Control Gerencia (solo lectura): reportes de instructores de Fitness y de los profesores de las áreas de Gerencia.
 
 CÓMO SUBIRLA
 ------------
@@ -83,6 +83,26 @@ Bicicletas sin número: se llaman "Bicicleta sin número 1" a "5". Cuando les pi
 Equipos -> abrir -> Editar equipo (el QR no cambia).
 Se quitaron los botones de datos de ejemplo (catálogo y reportes de ejemplo).
 
+REPORTES DE LOS PROFESORES DE CONTROL GERENCIA
+----------------------------------------------
+Los profesores de las demás áreas (tenis, pádel, natación, etc.) reportan desde su portal en Control Gerencia, con el mismo
+módulo que Control Fitness. El reporte cae directo aquí (/reportes) con origen:"gerencia" y areaId (el área del profesor),
+igual que los de Fitness: el técnico lo atiende en Reportes y el aviso de "resuelto" regresa al profesor, a su dirección y a
+Gerencia. En la tarjeta del reporte se ve el área. Para que un área pueda reportar, hay que dar de alta aquí sus salones y
+equipos (a mano o con "Importar equipos"). El nombre del salón debe ser igual al "lugar" de sus clases en Gerencia.
+
+IMPORTAR EQUIPOS DESDE EXCEL O CSV
+----------------------------------
+Equipos -> "Importar equipos". Se sube un Excel (.xlsx) o CSV, o se pegan las filas copiadas de Excel. Columnas (primera fila):
+Salón, Área, Equipo, Marca, Tipo, Foto. Solo Salón y Equipo son obligatorias. "Bajar plantilla" da el archivo de ejemplo.
+- Antes de guardar se muestra un resumen: equipos nuevos, los que ya existen, salones nuevos y filas con problema.
+- Un equipo se reconoce por salón + nombre: volver a importar el mismo archivo NO duplica; solo completa o actualiza
+  nombre, marca, tipo y foto (no toca el inventario de Spinning ni el historial).
+- Los salones que no existan se crean solos (con el Área que pongas; si la dejas vacía, el área es el nombre del salón).
+- Foto: nombre del archivo (ej. red-1.jpg) que se sube a img/equipos del repositorio. Si no la tienes, se deja vacía.
+- Leer .xlsx necesita internet (descarga el lector una vez). Con CSV funciona sin él.
+- Después de importar: Equipos -> "Imprimir QR" para sacar las etiquetas de los equipos nuevos.
+
 PRIMER USO
 ----------
 1) Equipos -> "Cargar los salones de Fitness": Salón 1, Salon Spinning, Salon Yoga, Salon 2, Salon3, Box y
@@ -106,7 +126,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 9). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 12). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL

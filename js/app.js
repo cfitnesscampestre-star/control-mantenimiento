@@ -218,6 +218,8 @@ function salonById(id){ return Object.assign({ id: id, nombre:'—', area:'' }, 
 function eqLugar(e){ return salonById(e.salonId).nombre; }
 function eqArea(e){ return salonById(e.salonId).area; }
 function abiertos(){ return lista('reportes'); }
+/* Lo que ve Control Gerencia: reportes de Fitness (origen fitness o profId numérico) y de los profesores de Gerencia (origen gerencia + areaId). Los de prueba no cuentan. */
+function esGerencia(r){ return !esPrueba(r) && (esFitness(r) || (r.origen === 'gerencia' && !!r.areaId)); }
 function esFitness(r){ return r.origen === 'fitness' || (r.origen == null && /^\d+$/.test(String(r.profId == null ? '' : r.profId))); }   // igual que Control Gerencia
 function semaforo(r){ return r.estado === 'resuelto' ? 'verde' : r.estado === 'atencion' ? 'amar' : 'rojo'; }
 function diasPrev(p){ return Math.round((p.proxima - sod(now())) / DAY); }
@@ -289,7 +291,7 @@ function repCard(r, abre){
   if (r.compra || r.cambio) x.push('<small>' + (r.compra ? 'Requiere compra' : '') + (r.compra && r.cambio ? ' · ' : '') + (r.cambio ? 'Requiere cambio' : '') + (r.costo ? ' · estimado $' + esc(r.costo) : '') + '</small>');
   var inner = '<div class="rep-h">' + pillEstado(r) + pillUrg(r) + (abre ? '<span class="go">' + ic('next') + '</span>' : '') + '</div>' +
     '<b class="rep-t">' + esc(e.nombre) + '</b><span class="rep-d">' + esc(r.desc) + '</span>' +
-    '<small>' + esc(eqLugar(e)) + ' · ' + esc(r.prof || 'Instructor') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · llegó ' + fechaHora(r.creado) + '</small>' +
+    '<small>' + esc(eqLugar(e)) + ' · ' + esc(r.prof || 'Instructor') + (r.origen === 'gerencia' && r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · llegó ' + fechaHora(r.creado) + '</small>' +
     (x.length ? '<div class="rep-x">' + x.join('') + '</div>' : '') + timerHTML(r);
   return abre ? '<button class="rep ' + semaforo(r) + '" data-a="openRep" data-v="' + r.id + '">' + inner + '</button>'
               : '<div class="rep ' + semaforo(r) + '">' + inner + '</div>';
@@ -378,7 +380,7 @@ function vEquipos(){
   var eqs = lista('equipos').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
   var areas = ['Todos'].concat(eqs.map(function(e){ return eqArea(e); }).filter(function(a, i, ar){ return a && ar.indexOf(a) === i; }));
   var l = eqs.filter(function(e){ return ui.areaF === 'Todos' || eqArea(e) === ui.areaF; });
-  return '<div class="btns" style="margin-top:0"><button class="btn primary" data-a="eqNew">' + ic('plus') + ' Agregar equipo</button><button class="btn" data-a="salones">Salones</button><button class="btn" data-a="qrAll">Imprimir QR</button></div>' + inventarioCard() + empiezaAqui() +
+  return '<div class="btns" style="margin-top:0"><button class="btn primary" data-a="eqNew">' + ic('plus') + ' Agregar equipo</button><button class="btn" data-a="impAbre">Importar equipos</button><button class="btn" data-a="salones">Salones</button><button class="btn" data-a="qrAll">Imprimir QR</button></div>' + inventarioCard() + empiezaAqui() +
     (areas.length > 1 ? '<div class="chips">' + areas.map(function(a){ return '<button class="chip' + (ui.areaF === a ? ' on' : '') + '" data-a="areaF" data-v="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</div>' : '') +
     (l.length ? '<div class="eqgrid">' + l.map(function(e){
       var s = eqEstado(e.id);
@@ -386,16 +388,16 @@ function vEquipos(){
         '<div class="inf"><b>' + esc(e.nombre) + '</b><small>' + esc(eqLugar(e)) + '</small>' + pill(s.t, s.c) + '</div></button>';
     }).join('') + '</div>' : empty('No hay equipos en esta lista.'));
 }
-/* Reportes gerencia: lo mismo que ve Control Gerencia (solo reportes de instructores de Fitness) */
+/* Reportes gerencia: lo mismo que ve Control Gerencia (reportes de Fitness y de los profesores de Gerencia) */
 function vGerencia(){
-  var ab = abiertos().filter(esFitness).sort(sortRep), pv = lista('preventivo'), hoy = sod(now());
+  var ab = abiertos().filter(esGerencia).sort(sortRep), pv = lista('preventivo'), hoy = sod(now());
   var sin = ab.filter(function(r){ return r.estado === 'nuevo'; }), pro = ab.filter(function(r){ return r.estado === 'atencion'; }), res = ab.filter(function(r){ return r.estado === 'resuelto'; });
-  var cer = lista('historial').filter(esFitness).filter(function(r){ return (r.cerrado || 0) >= now() - 30 * DAY; }).length;
+  var cer = lista('historial').filter(esGerencia).filter(function(r){ return (r.cerrado || 0) >= now() - 30 * DAY; }).length;
   var ven = pv.filter(function(p){ return diasPrev(p) < 0; });
   var pospN = pv.reduce(function(n, p){ return n + arr(p.posp).length; }, 0);
   var compras = ab.filter(function(r){ return (r.compra || r.cambio) && r.estado !== 'resuelto'; });
   var total = compras.reduce(function(n, r){ return n + (parseFloat(r.costo) || 0); }, 0);
-  return '<div class="vinc"><b>Esto es lo que ve Control Gerencia</b><span>Solo lectura. Por ahora solo cuentan los reportes de instructores de Fitness; los de ejemplo no se incluyen.</span></div>' +
+  return '<div class="vinc"><b>Esto es lo que ve Control Gerencia</b><span>Solo lectura. Cuentan los reportes de instructores de Fitness y de los profesores de las áreas de Gerencia; los de ejemplo no se incluyen.</span></div>' +
     '<div class="kpis k3">' + kpi('Sin atender', sin.length, sin.length ? 'problemas en rojo' : 'sin problemas', { cls: sin.length ? 'bad' : 'ok', color: 'var(--bad)' }) +
       kpi('En proceso', pro.length, 'ya los vio mantenimiento', { cls: pro.length ? 'warn' : '', color: 'var(--warn)' }) +
       kpi('Atendidos', res.length + cer, res.length + ' por cerrar · ' + cer + ' cerrados en 30 días', { cls: 'ok', color: 'var(--ok)' }) + '</div>' +
@@ -512,6 +514,106 @@ function sheetSalones(){
     '<datalist id="areas">' + ss.map(function(s){ return s.area; }).filter(function(a, i, ar){ return a && ar.indexOf(a) === i; }).map(function(a){ return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>' +
     '<button class="btn cta block" data-a="salAdd">Agregar salón</button>';
 }
+
+/* ---------- importar equipos desde Excel o CSV ----------
+   Columnas: Salón · Área · Equipo · Marca · Tipo · Foto  (Salón y Equipo son obligatorias).
+   Un equipo se reconoce por su salón y su nombre: volver a importar el mismo archivo no duplica nada, solo completa o actualiza.
+   Los salones que no existan se crean solos. La foto es el nombre del archivo que se sube a img/equipos. */
+var IMP_COLS = { salon:['salon','zona','lugar','salon o zona'], area:['area','disciplina'], nombre:['equipo','nombre','nombre del equipo'], marca:['marca'], tipo:['tipo','modelo'], foto:['foto','archivo','archivo de foto','imagen'] };
+function csvParse(txt){
+  txt = String(txt == null ? '' : txt).replace(/^﻿/, '');
+  var l1 = txt.split(/\r?\n/)[0] || '', cT = l1.split('\t').length, cS = l1.split(';').length, cC = l1.split(',').length;
+  var d = cT > 1 ? '\t' : (cS > cC ? ';' : ',');
+  var rows = [], row = [], f = '', q = false, i, c;
+  for (i = 0; i < txt.length; i++) {
+    c = txt[i];
+    if (q) { if (c === '"') { if (txt[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && txt[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(x){ return String(x).trim() !== ''; }); });
+}
+function slugImp(t){ return nrm(t).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x'; }
+function impAnaliza(txt){
+  var rows = csvParse(txt), res = { items:[], salonesNuevos:[], errores:[], nuevos:0, existentes:0, error:'' };
+  if (rows.length < 2) { res.error = 'No encontré datos. La primera fila debe tener los títulos de las columnas y debajo los equipos.'; return res; }
+  var hdr = rows[0].map(function(h){ return nrm(h); }), idx = {};
+  Object.keys(IMP_COLS).forEach(function(k){ idx[k] = -1; IMP_COLS[k].forEach(function(n){ if (idx[k] < 0) idx[k] = hdr.indexOf(n); }); });
+  if (idx.nombre < 0 || idx.salon < 0) { res.error = 'Faltan columnas. Se necesitan al menos “Salón” y “Equipo” en la primera fila.'; return res; }
+  var salByName = {}; lista('salones').forEach(function(s){ salByName[nrm(s.nombre)] = s; });
+  var nuevosSal = {}, vistos = {}, eqExist = {};
+  lista('equipos').forEach(function(e){ eqExist[e.salonId + '|' + nrm(e.nombre)] = e; });
+  var g = function(r, k){ return idx[k] >= 0 ? String(r[idx[k]] == null ? '' : r[idx[k]]).trim() : ''; };
+  rows.slice(1).forEach(function(r, n){
+    var fila = n + 2, sal = g(r, 'salon'), nom = g(r, 'nombre');
+    if (!sal && !nom) return;
+    if (!sal || !nom) { res.errores.push('Fila ' + fila + ': falta ' + (!sal ? 'el salón' : 'el nombre del equipo')); return; }
+    var s = salByName[nrm(sal)], sid;
+    if (s) sid = s.id;
+    else {
+      sid = nuevosSal[nrm(sal)] ? nuevosSal[nrm(sal)].id : 'sal-' + slugImp(sal);
+      if (!nuevosSal[nrm(sal)]) { nuevosSal[nrm(sal)] = { id:sid, nombre:sal, area:g(r, 'area') || sal }; res.salonesNuevos.push(nuevosSal[nrm(sal)]); }
+    }
+    var key = sid + '|' + nrm(nom);
+    if (vistos[key]) { res.errores.push('Fila ' + fila + ': “' + nom + '” está repetido en ' + sal + ' (se ignora)'); return; }
+    vistos[key] = 1;
+    var ex = eqExist[key];
+    res.items.push({ id: ex ? ex.id : 'imp-' + slugImp(sal) + '-' + slugImp(nom), nombre:nom, salonId:sid, salon:sal, marca:g(r, 'marca'), tipo:g(r, 'tipo'), foto:g(r, 'foto'), existe:!!ex });
+    if (ex) res.existentes++; else res.nuevos++;
+  });
+  if (!res.items.length && !res.error) res.error = 'No quedó ningún equipo para importar.' + (res.errores.length ? ' Revisa los avisos.' : '');
+  return res;
+}
+function impPlantilla(){
+  var csv = '﻿Salón;Área;Equipo;Marca;Tipo;Foto\r\nSalon Spinning;Spinning;Bicicleta 1;Spinner Ride;Bicicleta indoor;spinning-01.jpg\r\nCanchas de tenis;Tenis;Red cancha 1;;Red;\r\n';
+  var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' })); a.download = 'plantilla-equipos.csv';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function sheetImp(){
+  var p = ui.sh.prev, h = mHead('Importar equipos') +
+    '<div class="sub">Sube un Excel (.xlsx) o un CSV con una fila por equipo y las columnas <b>Salón, Área, Equipo, Marca, Tipo, Foto</b>. Solo Salón y Equipo son obligatorias. También puedes copiar las filas desde Excel y pegarlas abajo.</div>' +
+    '<div class="btns" style="margin-top:0"><label class="btn primary" style="cursor:pointer"><input type="file" accept=".xlsx,.xls,.csv,.txt,text/csv" data-imp hidden>Elegir archivo</label><button class="btn" data-a="impPlantilla">Bajar plantilla</button></div>' +
+    '<label class="f"><span>O pega aquí las filas</span><textarea data-f="txt" rows="4" placeholder="Salón&#9;Área&#9;Equipo&#9;Marca&#9;Tipo&#9;Foto">' + esc(ui.sh.txt) + '</textarea></label>' +
+    '<button class="btn block" data-a="impLee">Revisar lo que voy a importar</button>';
+  if (ui.sh.msg) h += '<div class="sub" style="margin-top:10px">' + esc(ui.sh.msg) + '</div>';
+  if (p) {
+    if (p.error) h += '<div class="vinc off" style="margin-top:12px"><b>No se pudo leer</b><span>' + esc(p.error) + '</span></div>';
+    else {
+      h += '<div class="card" style="margin-top:12px"><div class="h2 sm" style="margin:0 0 8px">Esto es lo que se va a hacer</div>' +
+        '<div class="row"><div><b>' + plu(p.nuevos, 'equipo nuevo', 'equipos nuevos') + '</b><small>' + plu(p.existentes, 'ya existe (se completa o actualiza, no se duplica)', 'ya existen (se completan o actualizan, no se duplican)') + '</small></div></div>' +
+        (p.salonesNuevos.length ? '<div class="row"><div><b>' + plu(p.salonesNuevos.length, 'salón nuevo', 'salones nuevos') + '</b><small>' + esc(p.salonesNuevos.map(function(s){ return s.nombre; }).join(', ')) + '</small></div></div>' : '') +
+        p.items.slice(0, 6).map(function(x){ return '<div class="row"><div><b>' + esc(x.nombre) + '</b><small>' + esc(x.salon) + (x.marca ? ' · ' + esc(x.marca) : '') + (x.foto ? ' · ' + esc(x.foto) : '') + (x.existe ? ' · ya existe' : '') + '</small></div></div>'; }).join('') +
+        (p.items.length > 6 ? '<div class="sub" style="margin:6px 0 0">y ' + (p.items.length - 6) + ' más…</div>' : '') + '</div>' +
+        (p.errores.length ? '<div class="vinc off" style="margin-top:10px"><b>' + plu(p.errores.length, 'aviso', 'avisos') + '</b><span>' + p.errores.slice(0, 5).map(esc).join('<br>') + (p.errores.length > 5 ? '<br>…' : '') + '</span></div>' : '') +
+        '<button class="btn cta block" style="margin-top:12px" data-a="impAplica">Importar ' + plu(p.items.length, 'equipo', 'equipos') + '</button>';
+    }
+  }
+  return h;
+}
+function impCargaXlsx(){
+  return new Promise(function(ok, ko){
+    if (window.XLSX) return ok();
+    var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = ok; s.onerror = function(){ ko(new Error('No se pudo cargar el lector de Excel. Revisa tu internet o guarda el archivo como CSV.')); }; document.head.appendChild(s);
+  });
+}
+function impArchivo(file){
+  var esXl = /\.xlsx?$/i.test(file.name);
+  ui.sh.msg = 'Leyendo ' + file.name + '…'; render();
+  var rd = new FileReader();
+  rd.onerror = function(){ ui.sh.msg = 'No se pudo leer el archivo.'; render(); };
+  rd.onload = function(){
+    var fin = function(txt){ ui.sh.txt = txt; ui.sh.msg = ''; ui.sh.prev = impAnaliza(txt); render(); };
+    if (!esXl) return fin(rd.result);
+    impCargaXlsx().then(function(){
+      var wb = XLSX.read(rd.result, { type:'array' }), ws = wb.Sheets[wb.SheetNames[0]];
+      fin(XLSX.utils.sheet_to_csv(ws, { FS:'\t' }));
+    }).catch(function(e){ ui.sh.msg = e.message || 'No se pudo leer el Excel.'; render(); });
+  };
+  if (esXl) rd.readAsArrayBuffer(file); else rd.readAsText(file, 'utf-8');
+}
 function sheetPrevForm(){
   var nuevo = !ui.sheet.id, fr = [[7, 'Cada semana'], [15, 'Cada 15 días'], [30, 'Cada mes'], [90, 'Cada 3 meses'], [180, 'Cada 6 meses'], [365, 'Cada año']];
   return mHead(nuevo ? 'Agregar revisión' : 'Editar revisión') +
@@ -597,7 +699,7 @@ function render(){
     : !online ? '<div class="vinc off"><b>Sin internet</b><span>Los cambios se envían al volver la señal. No cierres la app hasta entonces.</span></div>' : '';
   document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + errBanner + body + '</main></div>' + bottomnav() + '</div>';
   var m = document.getElementById('modal'), k = ui.sheet && ui.sheet.k, html = '';
-  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'sal' ? sheetSalones() : k === 'cal' ? sheetCal() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
+  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
   if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
   else { m.hidden = true; m.innerHTML = ''; document.body.style.overflow = ''; }
   var car1 = document.querySelector('.carr'); if (car1) { car1.scrollLeft = sl; carrN(); }
@@ -716,6 +818,21 @@ var A = {
     if (!confirm('¿Eliminar este equipo del catálogo?')) return;
     ui.sheet = null; guarda('equipos/' + id, null); render(); toast('Equipo eliminado');
   },
+
+  impAbre:function(){ ui.sheet = { k:'imp' }; ui.sh = { txt:'', prev:null, msg:'' }; render(); },
+  impPlantilla:function(){ impPlantilla(); },
+  impLee:function(){ if (!(ui.sh.txt || '').trim()) return toast('Elige un archivo o pega las filas'); ui.sh.msg = ''; ui.sh.prev = impAnaliza(ui.sh.txt); render(); },
+  impAplica:function(){
+    var p = ui.sh.prev; if (!p || p.error || !p.items.length) return;
+    if (!db) return toast('Sin conexión con la base de datos');
+    var up = {};
+    p.salonesNuevos.forEach(function(s){ up['salones/' + s.id] = { nombre:s.nombre, area:s.area }; });
+    p.items.forEach(function(x){
+      if (x.existe) { up['equipos/' + x.id + '/nombre'] = x.nombre; ['marca', 'tipo', 'foto'].forEach(function(k){ if (x[k]) up['equipos/' + x.id + '/' + k] = x[k]; }); }
+      else up['equipos/' + x.id] = limpia({ nombre:x.nombre, salonId:x.salonId, foto:x.foto || '', marca:x.marca || undefined, tipo:x.tipo || undefined, origen:'importado' });
+    });
+    db.ref().update(up).then(function(){ ui.sheet = null; render(); toast('Importados ' + plu(p.items.length, 'equipo', 'equipos')); }).catch(function(e){ toast('No se pudo importar: ' + e.message); });
+  },
   salones:function(){ ui.sheet = { k:'sal' }; ui.sh = { nombre:'', area:'' }; render(); },
   salAdd:function(){
     var s = ui.sh; if (!s.nombre.trim()) return toast('Escribe el nombre del salón');
@@ -774,6 +891,7 @@ document.addEventListener('keydown', function(e){
 });
 document.addEventListener('change', function(e){
   var t = e.target, tipo = t && t.getAttribute && t.getAttribute('data-foto');
+  if (t && t.hasAttribute && t.hasAttribute('data-imp') && t.files && t.files[0]) { impArchivo(t.files[0]); t.value = ''; return; }
   if (tipo && t.files && t.files[0]) { subeFoto(tipo, t.files[0]); t.value = ''; }
 });
 document.addEventListener('input', function(e){
