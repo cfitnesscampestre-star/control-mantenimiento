@@ -555,3 +555,28 @@ button.cloud{background:none;border:0;padding:0;font:inherit;color:inherit;curso
 
 .pd-hor{display:flex;align-items:center;gap:8px}
 .pd-hor input{flex:1;min-width:0}
+
+/* ---------- informes (Reportes gerencia) ---------- */
+.inf-top{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.inf-top b{display:block;font-size:19px;letter-spacing:-.01em}
+.inf-top small{color:var(--mut)}
+.inf-rap{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.inf-rap .btn{width:100%}
+.inf-bt{margin:12px 0}
+.inf-fechas{margin-top:2px}
+.inf-fp{margin:10px 0}
+.inf-fp .lbl{font-weight:600;font-size:13px;color:var(--ink-2);margin:8px 0 2px}
+.inf-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:6px}
+.inf-wrap .h2{margin-top:18px}
+.inf-wrap .doc-tabla{width:100%;min-width:900px;border-collapse:collapse;font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.inf-wrap .doc-tabla th{background:#eaf3f1;color:#0a4d3a;text-align:left;padding:8px 9px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.inf-wrap .doc-tabla td{padding:8px 9px;border-top:1px solid var(--line);vertical-align:top}
+.inf-wrap .doc-tabla td small{display:block;color:var(--mut);font-size:11.5px;margin-top:1px}
+.inf-wrap .doc-tabla .n{text-align:right}
+.inf-wrap td.s-rojo{box-shadow:inset 4px 0 0 var(--bad)}
+.inf-wrap td.s-amar{box-shadow:inset 4px 0 0 var(--warn)}
+.inf-wrap td.s-verde{box-shadow:inset 4px 0 0 var(--ok)}
+.inf-nota{margin-top:10px}
+@media(max-width:560px){.kpis.k3 .kpi-btn .k-go{display:none}}
+.kpis.inf-k{grid-template-columns:repeat(3,1fr)}
+@media(max-width:560px){.kpis.inf-k{grid-template-columns:repeat(2,1fr)}}

@@ -21,7 +21,7 @@ var URG_TXT = { normal: 'Normal', urgente: 'Urgente', fuera: 'No se puede usar' 
 var SALONES_FITNESS = [['salon-1', 'Salón 1', 'Salones'], ['salon-spinning', 'Salon Spinning', 'Spinning'], ['salon-yoga', 'Salon Yoga', 'Yoga'],
   ['salon-2', 'Salon 2', 'Salones'], ['salon-3', 'Salon3', 'Salones'], ['box', 'Box', 'Box'], ['crossfit', 'CrossFit', 'CrossFit']];
 
-var DB = { equipos: {}, salones: {}, reportes: {}, preventivo: {}, historial: {} };
+var DB = { equipos: {}, salones: {}, reportes: {}, preventivo: {}, historial: {}, informes: {} };
 var db = null, online = false, ready = false, fbError = '';
 var REQ_ACCESO = (typeof REQUIERE_ACCESO !== 'undefined') ? REQUIERE_ACCESO : false;
 var FOTO_OBLIG = (typeof FOTO_DESPUES_OBLIGATORIA !== 'undefined') ? FOTO_DESPUES_OBLIGATORIA : false;
@@ -61,7 +61,7 @@ function durCorta(ms){
 }
 function fechaHora(ts){ return new Date(ts).toLocaleString('es-MX', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }); }
 try { var c0 = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c0) { DB = Object.assign(DB, c0); ready = true; } } catch(e){}
-function cacheSave(){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(DB)); } catch(e){} }
+function cacheSave(){ try { var c = Object.assign({}, DB); delete c.informes; localStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch(e){} }
 
 /* ---------- iconos (los mismos trazos que usa Control Gerencia) ---------- */
 var ICONS = {
@@ -135,6 +135,7 @@ function iniciaDatos(){
       function(err){ fbError = 'Firebase: ' + err.message; softRender(); });
   });
   db.ref('historial').limitToLast(200).on('value', function(s){ DB.historial = s.val() || {}; cacheSave(); softRender(); }, function(){});
+  db.ref('informes').limitToLast(30).on('value', function(s){ DB.informes = s.val() || {}; softRender(); }, function(){});
 }
 function cargaPerfil(u){
   db.ref('usuarios/' + u.uid).once('value').then(function(s){
@@ -390,24 +391,22 @@ function vEquipos(){
 }
 /* Reportes gerencia: lo mismo que ve Control Gerencia (reportes de Fitness y de los profesores de Gerencia) */
 function vGerencia(){
-  var ab = abiertos().filter(esGerencia).sort(sortRep), pv = lista('preventivo'), hoy = sod(now());
-  var sin = ab.filter(function(r){ return r.estado === 'nuevo'; }), pro = ab.filter(function(r){ return r.estado === 'atencion'; }), res = ab.filter(function(r){ return r.estado === 'resuelto'; });
-  var cer = lista('historial').filter(esGerencia).filter(function(r){ return (r.cerrado || 0) >= now() - 30 * DAY; }).length;
+  if (ui.inf) return vInforme();
+  var ab = abiertos().filter(esGerencia).sort(sortRep), pv = lista('preventivo');
+  var sin = ab.filter(function(r){ return r.estado === 'nuevo'; }), pro = ab.filter(function(r){ return r.estado === 'atencion'; });
+  var atend = infReps(infCfg(INF_RAP.res.o)).length;
   var ven = pv.filter(function(p){ return diasPrev(p) < 0; });
   var pospN = pv.reduce(function(n, p){ return n + arr(p.posp).length; }, 0);
   var compras = ab.filter(function(r){ return (r.compra || r.cambio) && r.estado !== 'resuelto'; });
   var total = compras.reduce(function(n, r){ return n + (parseFloat(r.costo) || 0); }, 0);
-  return '<div class="vinc"><b>Esto es lo que ve Control Gerencia</b><span>Solo lectura. Cuentan los reportes de instructores de Fitness y de los profesores de las áreas de Gerencia; los de ejemplo no se incluyen.</span></div>' +
-    '<div class="kpis k3">' + kpi('Sin atender', sin.length, sin.length ? 'problemas en rojo' : 'sin problemas', { cls: sin.length ? 'bad' : 'ok', color: 'var(--bad)' }) +
-      kpi('En proceso', pro.length, 'ya los vio mantenimiento', { cls: pro.length ? 'warn' : '', color: 'var(--warn)' }) +
-      kpi('Atendidos', res.length + cer, res.length + ' por cerrar · ' + cer + ' cerrados en 30 días', { cls: 'ok', color: 'var(--ok)' }) + '</div>' +
-    '<div class="kpis k3">' + kpi('Preventivos vencidos', ven.length, ven.length ? 'revisión atrasada' : 'al corriente', { cls: ven.length ? 'bad' : 'ok', color: 'var(--bad)' }) +
-      kpi('Pospuestos', pospN, 'veces que se movió una revisión', { color: 'var(--b3)' }) +
-      kpi('Compras o cambios', compras.length, total ? 'estimado $' + total.toLocaleString('es-MX') : 'por autorizar', { color: 'var(--b2)' }) + '</div>' +
-    '<div class="h2">Sin atender</div>' + (sin.length ? '<div class="replist">' + sin.map(function(r){ return repCard(r, false); }).join('') + '</div>' : empty('No hay reportes en rojo.')) +
-    '<div class="h2">En proceso</div>' + (pro.length ? '<div class="replist">' + pro.map(function(r){ return repCard(r, false); }).join('') + '</div>' : empty('No hay reportes en proceso.')) +
-    '<div class="h2">Atendidos, por cerrar</div>' + (res.length ? '<div class="replist">' + res.map(function(r){ return repCard(r, false); }).join('') + '</div>' : empty('No hay reportes resueltos esperando cierre.')) +
-    '<div class="h2">Preventivos vencidos</div>' + (ven.length ? '<div class="replist">' + ven.map(function(p){ return prevCard(p, true); }).join('') + '</div>' : empty('Todo el preventivo va al corriente.'));
+  return '<div class="vinc"><b>Esto es lo que ve Control Gerencia</b><span>Cuentan los reportes de instructores de Fitness y de los profesores de las áreas de Gerencia; los de ejemplo no se incluyen. Toca un indicador para ver su lista.</span></div>' +
+    '<div class="kpis k3">' + infKpiBtn('sin', 'Sin atender', sin.length, sin.length ? 'problemas en rojo' : 'sin problemas', { cls: sin.length ? 'bad' : 'ok', color: 'var(--bad)' }) +
+      infKpiBtn('pro', 'En proceso', pro.length, 'ya los vio mantenimiento', { cls: pro.length ? 'warn' : '', color: 'var(--warn)' }) +
+      infKpiBtn('res', 'Atendidos', atend, 'resueltos en 30 días', { cls: 'ok', color: 'var(--ok)' }) + '</div>' +
+    '<div class="kpis k3">' + infKpiBtn('ven', 'Preventivos vencidos', ven.length, ven.length ? 'revisión atrasada' : 'al corriente', { cls: ven.length ? 'bad' : 'ok', color: 'var(--bad)' }) +
+      infKpiBtn('posp', 'Pospuestos', pospN, 'veces que se movió una revisión', { color: 'var(--b3)' }) +
+      infKpiBtn('compras', 'Compras o cambios', compras.length, total ? 'estimado $' + total.toLocaleString('es-MX') : 'por autorizar', { color: 'var(--b2)' }) + '</div>' +
+    infGeneradorHTML() + infEnviadosHTML();
 }
 
 /* ---------- hojas (ventana emergente, igual que en Gerencia) ---------- */
@@ -699,15 +698,16 @@ function render(){
     : !online ? '<div class="vinc off"><b>Sin internet</b><span>Los cambios se envían al volver la señal. No cierres la app hasta entonces.</span></div>' : '';
   document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + errBanner + body + '</main></div>' + bottomnav() + '</div>';
   var m = document.getElementById('modal'), k = ui.sheet && ui.sheet.k, html = '';
-  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
+  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
   if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
   else { m.hidden = true; m.innerHTML = ''; document.body.style.overflow = ''; }
+  if (k === 'infdoc') infMonta();
   var car1 = document.querySelector('.carr'); if (car1) { car1.scrollLeft = sl; carrN(); }
   var sh1 = document.querySelector('#modal .sheet'); if (sh1 && ss) sh1.scrollTop = ss;
   if (sy) window.scrollTo(0, sy);
 }
 function escribiendo(){ var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
-function softRender(){ if (escribiendo()) { ui.dirty = true; return; } render(); }
+function softRender(){ if (escribiendo() || (ui.sheet && ui.sheet.k === 'infdoc')) { ui.dirty = true; return; } render(); }
 var toastT;
 function toast(msg){ var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function(){ t.classList.remove('show'); }, 2800); }
 function top0(){ window.scrollTo(0, 0); }

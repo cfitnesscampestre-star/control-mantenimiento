@@ -1,10 +1,10 @@
 'use strict';
 /* Al subir cambios: sube VERSION aquí y el número ?v= en index.html (van juntos).
    Si agregas archivos nuevos en css/, js/ o img/, agrégalos a ARCHIVOS. */
-const VERSION = 12;
+const VERSION = 13;
 const CACHE = 'cm-v' + VERSION;
 const ARCHIVOS = ['./', 'index.html', 'manifest.json', 'css/main.css', 'css/glassmorphism.css', 'css/mantenimiento.css', 'css/app-mobile.css', 'css/app-desktop.css',
-  'js/config.js', 'js/qrcode.js', 'js/inventario.js', 'js/app.js', 'img/logo.png', 'img/textura.svg', 'img/textura-clara.svg', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png', 'img/apple-touch-icon.png', 'img/favicon-32.png'];
+  'js/config.js', 'js/qrcode.js', 'js/inventario.js', 'js/app.js', 'js/informes.js', 'img/membrete.png', 'img/logo.png', 'img/textura.svg', 'img/textura-clara.svg', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png', 'img/apple-touch-icon.png', 'img/favicon-32.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));

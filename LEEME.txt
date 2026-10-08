@@ -153,8 +153,24 @@ Para poder agrupar por TIPO de problema, Control Fitness debería guardar tambi�
 eligió ("No enciende", "Ruido extraño", "Flojo o roto", "Falta pieza") en un campo aparte, por ejemplo
 tipos: ["No enciende"].
 
+REPORTES E INFORMES (pestaña "Reportes gerencia")
+-------------------------------------------------
+- Cada indicador (Sin atender, En proceso, Atendidos, Preventivos vencidos, Pospuestos, Compras o cambios) se toca y abre su
+  lista en renglones: cuándo llegó, equipo y lugar, falla y diagnóstico, quién reportó, estado, quién lo atendió, cuánto
+  tardó en abrirse y en resolverse, y si necesitó compra, cambio o pieza. Arriba se eligen las fechas.
+- "Generar reporte": reportes rápidos (del día, preventivos de esta semana, problemas del mes ordenados por tiempo,
+  pendientes, solo Fitness, resueltos del mes) o "Armar mi reporte" con filtros: periodo, estado, urgencia, origen
+  (Fitness u otras áreas), área, lugar, quién atendió, orden (por fecha, por tiempo de mayor a menor, por equipo o lugar)
+  y solo los que necesitan compra o cambio.
+- "Imprimir o guardar PDF": hoja carta con el membrete de Campestre (igual que en Control Gerencia).
+- "Enviar a Control Gerencia": guarda una copia del reporte en /informes. Gerencia lo ve en su pestaña Mantenimiento
+  ("Reportes de Mantenimiento"), lo abre y lo imprime desde allá. Lo enviado aparece abajo, con "Quitar de Gerencia".
+- Para poder enviar hay que publicar las reglas nuevas (reglas-firebase.txt agrega /informes).
+- En "Todo el historial" entran los últimos 200 reportes ya cerrados por los instructores (límite de lo que se descarga).
+
 ESTRUCTURA DE DATOS
 -------------------
+/informes/{id}   { titulo, sub, tipo, kpis[[etiqueta, valor, nota]], secs[{ t, cols[{t,w,n}], filas[[texto]], sem[] }], nota, n, creado, por }
 /salones/{id}    { nombre, area }
 /equipos/{id}    { nombre, salonId, foto }
 /reportes/{id}   reportes ABIERTOS:

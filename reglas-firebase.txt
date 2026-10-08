@@ -11,6 +11,7 @@ Pégalas completas y pulsa Publicar. Hazlo DESPUÉS de comprobar que ya puedes e
     "salones": { ".write": "auth != null && auth.token.firebase.sign_in_provider === 'password'" },
     "equipos": { ".write": "auth != null && auth.token.firebase.sign_in_provider === 'password'" },
     "preventivo": { ".write": "auth != null && auth.token.firebase.sign_in_provider === 'password'" },
+    "informes": { ".write": "auth != null && auth.token.firebase.sign_in_provider === 'password'" },
     "fotos": { ".write": "auth != null && auth.token.firebase.sign_in_provider === 'password'" },
     "usuarios": { "$uid": { ".write": "auth != null && auth.uid === $uid" } }
   }
@@ -20,4 +21,5 @@ Qué hacen:
 - Leer: cualquiera puede leer (Control Fitness y Control Gerencia leen sin iniciar sesión).
 - reportes e historial: los instructores los crean y los quitan desde Control Fitness, sin cuenta aquí.
   El índice por profId permite que cada instructor consulte solo los suyos; el de equipoId, ver si un equipo ya tiene un reporte.
+- informes: los reportes que mantenimiento envía a Control Gerencia; solo se escriben con sesión iniciada (Gerencia solo los lee).
 - Catálogo (salones, equipos), preventivo, fotos y usuarios: solo se escriben con sesión iniciada con usuario y PIN.
