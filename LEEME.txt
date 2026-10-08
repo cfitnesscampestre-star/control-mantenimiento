@@ -29,7 +29,7 @@ NOVEDADES DE LA VERSION 14 (8-oct-2026)
    siguen abajo para tareas generales.
 3) PIEZAS: en el reporte, "¿Hace falta una pieza?": se escribe cuál y "Pedir pieza (marca la hora)"; queda en amarillo "Esperando
    pieza" con cronómetro; "Ya llegó la pieza" marca la hora. Se guardan piezas[{desc,pedida,llego}], msPieza (tiempo esperando
-   piezas) y msTrabajo (tiempo de proceso sin la espera). Pedir pieza marca "necesita comprar" para que salga en Compras o cambios.
+   piezas) y msTrabajo (tiempo de proceso sin la espera). Mientras se espera una pieza el botón "Marcar resuelto" queda desactivado (v15); se activa al marcar "Ya llegó la pieza". Pedir pieza marca "necesita comprar" para que salga en Compras o cambios.
    Los informes muestran la pieza y cuánto esperó.
 4) ARCHIVO A UN MES: los reportes resueltos hace más de 30 días salen de la vista y pasan a /archivo (no se borran; se hace solo
    cuando el técnico tiene la app abierta). Los informes de periodos largos (3 meses, 12 meses, Todo) los cargan cuando hacen falta.
@@ -149,7 +149,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 14). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 15). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL

@@ -558,6 +558,7 @@ function mHead(t){ return '<div class="sh-h"><b>' + esc(t) + '</b><button class=
 function opcionesSalon(sel, vacio){
   return (vacio ? '<option value="">' + vacio + '</option>' : '') + lista('salones').map(function(s){ return '<option value="' + s.id + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.nombre) + ' · ' + esc(s.area) + '</option>'; }).join('');
 }
+function esperaPz(r){ return arr(r.piezas).some(function(x){ return !x.llego; }); }
 function msPiezas(r, hasta){                 /* tiempo total esperando piezas (lo que sigue pendiente cuenta hasta "hasta") */
   return arr(r.piezas).reduce(function(n, x){ return n + Math.max(0, (x.llego || hasta) - x.pedida); }, 0);
 }
@@ -613,7 +614,8 @@ function sheetRep(){
     '<label class="chk"><input type="checkbox" data-f="cambio"' + (sh.cambio ? ' checked' : '') + (hecho ? ' disabled' : '') + '> Necesita cambio de pieza o equipo</label>' +
     '<label class="f" style="margin-top:8px"><span>Costo estimado (opcional)</span><input inputmode="decimal" data-f="costo" value="' + esc(sh.costo) + '" placeholder="0"' + (hecho ? ' disabled' : '') + '></label>' +
     (hecho ? '<div class="sub">Este reporte ya está resuelto. Se quita cuando el instructor lo elimine.</div>' :
-      '<div class="btns"><button class="btn" data-a="saveRep">Guardar nota</button><button class="btn primary" data-a="resolveRep">Marcar resuelto</button></div>');
+      (esperaPz(r) ? '<div class="sub" style="margin-bottom:8px"><b>No se puede marcar resuelto mientras se espera la pieza.</b> Cuando llegue, toca “Ya llegó la pieza”.</div>' : '') +
+      '<div class="btns"><button class="btn" data-a="saveRep">Guardar nota</button><button class="btn primary" data-a="resolveRep"' + (esperaPz(r) ? ' disabled' : '') + '>Marcar resuelto</button></div>');
 }
 function sheetNombre(){
   return mHead('¿Cómo te llamas?') + '<div class="sub">Tu nombre aparece en los reportes que atiendas.</div>' +
@@ -958,6 +960,7 @@ var A = {
   },
   saveRep:function(){ var id = ui.sheet.id, s = ui.sh; ui.sheet = null; actualiza('reportes/' + id, { diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }); render(); toast('Nota guardada'); },
   resolveRep:function(){
+    if (esperaPz(DB.reportes[ui.sheet.id] || {})) return toast('Todavía se espera una pieza. Marca primero que ya llegó.');
     if (!ui.sh.diag.trim()) return toast('Anota qué encontraste y qué hiciste');
     var fo = FOT[ui.sheet.id] || {};
     if (!fo.despues) {

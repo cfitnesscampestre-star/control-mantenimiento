@@ -141,3 +141,5 @@ button.eq:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(8,34,40,.
 .pieza.esp{border:2px solid #e9c15d;background:#fdf0d5}
 
 .eq .inf .pill{white-space:normal;text-align:left;line-height:1.25}
+
+.btn[disabled]{opacity:.45;cursor:not-allowed;filter:grayscale(.4)}
