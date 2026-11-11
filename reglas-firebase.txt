@@ -1,8 +1,75 @@
 REGLAS DE FIREBASE (Realtime Database -> Reglas)
 ================================================
-Pégalas completas y pulsa Publicar. Hazlo DESPUÉS de comprobar que ya puedes entrar a la app con tu usuario y PIN
-(si las publicas antes, el técnico no podría editar el catálogo).
+Versión 16. Antes de publicarlas haz, EN ESTE ORDEN, los pasos 1 a 3. Si publicas sin el paso 2, ningún técnico podrá
+editar el catálogo, el preventivo ni las fotos.
 
+1) Cierra el registro libre de cuentas (lo más urgente; hazlo hoy aunque no publiques todavía las reglas):
+   Firebase -> Authentication -> Configuración (Settings) -> Acciones de usuario (User actions) ->
+   QUITA la palomita de "Habilitar creación (registro)" ("Enable create (sign-up)") -> Guardar.
+   Sin esto, cualquiera que vea el código de la app (es público) puede crearse una cuenta y tendría permiso de técnico.
+   Los técnicos se siguen dando de alta a mano en Authentication -> Usuarios -> Agregar usuario.
+
+2) Lista de técnicos autorizados (/tecnicos). Para cada técnico:
+   Authentication -> Usuarios -> copia su "UID de usuario".
+   Realtime Database -> Datos -> junto a la raíz, "+" -> Nombre: tecnicos -> dentro, "+" -> Nombre: (el UID) -> Valor: true
+   Queda así:  tecnicos
+                 Xy12AbC...  : true
+                 Pq98ZzK...  : true
+   Solo se edita desde la consola de Firebase (la app no puede escribir ahí). Técnico nuevo = agregar su UID aquí.
+   Si borras y vuelves a crear un usuario para cambiarle el PIN, su UID cambia: actualízalo aquí.
+
+3) Pega las reglas completas y pulsa Publicar:
+
+{
+  "rules": {
+    ".read": true,
+    "tecnicos": { ".write": false },
+    "reportes": {
+      ".indexOn": ["profId", "equipoId"],
+      "$id": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['creado', 'estado']) && $id.length <= 40 && $id.matches(/^[A-Za-z0-9_-]+$/)",
+        "creado": { ".validate": "newData.isNumber()" },
+        "estado": { ".validate": "newData.isString() && newData.val().matches(/^(nuevo|atencion|resuelto)$/)" },
+        "urg": { ".validate": "newData.isString() && newData.val().matches(/^(normal|urgente|fuera)$/)" },
+        "visto": { ".validate": "newData.isNumber()" },
+        "resuelto": { ".validate": "newData.isNumber()" },
+        "desc": { ".validate": "newData.isString() && newData.val().length <= 2000" },
+        "diag": { ".validate": "newData.isString() && newData.val().length <= 4000" }
+      }
+    },
+    "historial": {
+      "$id": {
+        ".write": true,
+        ".validate": "newData.hasChild('creado') && $id.length <= 40 && $id.matches(/^[A-Za-z0-9_-]+$/)",
+        "creado": { ".validate": "newData.isNumber()" }
+      }
+    },
+    "salones": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "equipos": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "preventivo": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "archivo": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "prevlog": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "informes": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "fotos": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "usuarios": { "$uid": { ".write": "auth != null && auth.uid === $uid" } }
+  }
+}
+
+Qué hacen:
+- Leer: cualquiera puede leer (Control Fitness, Control Gerencia y el respaldo automático leen sin iniciar sesión).
+- reportes e historial: los instructores los crean y los quitan desde Control Fitness, sin cuenta aquí. Ahora solo se puede
+  escribir un reporte a la vez (ya no se puede borrar o reemplazar /reportes completo de un golpe) y cada reporte debe traer
+  "creado" (número, ms) y "estado" (nuevo, atencion o resuelto); urgencia, fechas y textos se revisan. La clave del reporte
+  solo puede tener letras, números, "-" y "_" (las que crea Firebase con push()). Borrar un reporte sigue permitido.
+  El índice por profId permite que cada instructor consulte solo los suyos; el de equipoId, ver si un equipo ya tiene un reporte.
+- Catálogo (salones, equipos), preventivo, archivo, bitácora, informes y fotos: solo los técnicos que están en /tecnicos.
+- usuarios: cada técnico escribe solo su propio nombre.
+
+Si después de publicarlas Control Fitness o Control Gerencia muestran "permission denied" al mandar o quitar un reporte, es
+que mandan algún campo con otro formato: vuelve a publicar la versión anterior (abajo) y avisa para ajustarlas.
+
+Versión anterior (15), por si hay que regresar:
 {
   "rules": {
     ".read": true,
@@ -18,11 +85,3 @@ Pégalas completas y pulsa Publicar. Hazlo DESPUÉS de comprobar que ya puedes e
     "usuarios": { "$uid": { ".write": "auth != null && auth.uid === $uid" } }
   }
 }
-
-Qué hacen:
-- Leer: cualquiera puede leer (Control Fitness y Control Gerencia leen sin iniciar sesión).
-- reportes e historial: los instructores los crean y los quitan desde Control Fitness, sin cuenta aquí.
-  El índice por profId permite que cada instructor consulte solo los suyos; el de equipoId, ver si un equipo ya tiene un reporte.
-- informes: los reportes que mantenimiento envía a Control Gerencia; solo se escriben con sesión iniciada (Gerencia solo los lee).
-- archivo: reportes resueltos hace más de un mes (la app los mueve aquí, no se borran). prevlog: bitácora de las revisiones preventivas por equipo.
-- Catálogo (salones, equipos), preventivo, fotos y usuarios: solo se escriben con sesión iniciada con usuario y PIN.

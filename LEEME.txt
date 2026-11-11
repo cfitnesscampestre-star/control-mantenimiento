@@ -15,6 +15,20 @@ AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proc
 VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
 Cada reporte lleva un cronómetro que corre desde que llega y se detiene al resolverse.
 
+NOVEDADES DE LA VERSION 16 (11-nov-2026) — seguridad y datos
+----------------------------------------------------------------
+ANTES DE SUBIRLA lee reglas-firebase.txt: hay que cerrar el registro libre de cuentas en Firebase, dar de alta a los técnicos
+en /tecnicos (su UID) y publicar las reglas nuevas.
+1) Reglas: un reporte ya no se puede borrar o reemplazar en bloque; cada reporte debe traer sus campos con el formato correcto.
+   El catálogo, el preventivo, las fotos y los informes solo los escriben los técnicos de la lista /tecnicos.
+2) La app ya no pinta en pantalla datos de un reporte sin limpiarlos (un reporte manipulado podía ejecutar código en el
+   teléfono del técnico).
+3) "Editar equipo" ya no borra el inventario, la marca ni la última revisión preventiva del equipo.
+4) Si el instructor cierra un reporte mientras el técnico lo tiene abierto, la app lo avisa y no crea un reporte "fantasma".
+5) Sin señal: los avisos dicen "quedó guardado en este teléfono" y el "listo" sale cuando la base confirma. Lo que quedó
+   pendiente se reenvía solo al volver a abrir la app, aunque el teléfono la haya cerrado.
+6) Al cerrar una ventana con cambios sin guardar (tocar fuera, la X o Escape), la app pregunta antes de perder lo escrito.
+
 NOVEDADES DE LA VERSION 14 (8-oct-2026)
 ----------------------------------------
 1) FOTOS: ahora "Tomar foto" abre la cámara DENTRO de la app (no la del teléfono). Antes, al salir a la cámara del teléfono, algunos
@@ -76,10 +90,13 @@ Para activarlo (una sola vez), ANTES de subir la app:
    "Correo electrónico/contraseña" -> Habilitar (solo la primera opción) -> Guardar.
 2) Authentication -> Usuarios -> Agregar usuario: correo tecnico@mantenimiento.club y como contraseña el PIN.
 3) Sube la app y entra con usuario "tecnico" y ese PIN.
-4) Después de comprobar que entras, pega las reglas de reglas-firebase.txt en Realtime Database -> Reglas -> Publicar.
-Otro técnico: Authentication -> Agregar usuario (nombre@mantenimiento.club + su PIN). También puede usarse un correo real:
-en "Usuario" se escribe el correo completo.
+4) Authentication -> Configuración -> Acciones de usuario -> quita "Habilitar creación (registro)" (así nadie más se crea cuenta).
+5) Copia el UID del usuario y agrégalo en Realtime Database -> Datos -> tecnicos -> (UID): true (ver reglas-firebase.txt).
+6) Después de comprobar que entras, pega las reglas de reglas-firebase.txt en Realtime Database -> Reglas -> Publicar.
+Otro técnico: Authentication -> Agregar usuario (nombre@mantenimiento.club + su PIN) y agrega su UID en /tecnicos. También puede
+usarse un correo real: en "Usuario" se escribe el correo completo.
 Cambiar un PIN: en Authentication, elimina el usuario y créalo otra vez con el PIN nuevo (la app le volverá a pedir su nombre).
+Como el UID cambia, actualízalo también en /tecnicos.
 Para abrir la app sin acceso (por ejemplo, mientras preparas Firebase): js/config.js -> REQUIERE_ACCESO = false.
 
 FOTOS DEL ANTES Y EL DESPUÉS
@@ -149,7 +166,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 15). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 16). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL
