@@ -13,7 +13,7 @@
   --tint1:rgba(95,179,54,.13); --tint2:rgba(42,174,214,.15);
   --navy:#0a1f2e;
   --bg:#edf3f2;
-  --ink:#10222b; --ink-2:#3f5560; --mut:#748792;
+  --ink:#10222b; --ink-2:#3f5560; --mut:#596b75;   /* #596b75: contraste 4.6–5.5:1 (WCAG AA) sobre los fondos de la app */
   --line:#dde7e6; --line-2:#c9d8d7;
   --g:#0f7a5a; --g-d:#0a4d3a; --g-l:#e3f4ec; --g-m:#3aa06e;
   --ok:#0e9f7e; --ok-l:#dcf5ee;
@@ -34,7 +34,7 @@
   --sb:rgba(122,43,143,.30); --sb2:rgba(96,32,128,.34);
   --tint1:rgba(194,24,122,.13); --tint2:rgba(51,169,211,.16);
   --navy:#0f1b33; --bg:#eef0f8;
-  --ink:#121c33; --ink-2:#465270; --mut:#7c88a3; --line:#e1e5f0; --line-2:#cfd6e6;
+  --ink:#121c33; --ink-2:#465270; --mut:#5f6a85; --line:#e1e5f0; --line-2:#cfd6e6;
   --g:#7a2b8f; --g-d:#4d1a69; --g-l:#f3e9f8; --g-m:#a04bb6;
   --info:#1f6f9c; --info-l:#e1eff8;
 }

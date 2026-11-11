@@ -15,6 +15,18 @@ AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proc
 VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
 Cada reporte lleva un cronómetro que corre desde que llega y se detiene al resolverse.
 
+NOVEDADES DE LA VERSION 20 (12-nov-2026) — pulido de pantalla
+--------------------------------------------------------------
+1) "¿Lo abriste por error?": al abrir un reporte pasa solo a "en proceso"; si fue un toque por error, el mismo técnico lo
+   regresa a "No visto" durante 15 minutos, mientras no haya escrito nada, pedido piezas ni tomado fotos.
+2) Renombrar un salón se hace en la misma ventana (antes salían dos cuadros del navegador).
+3) La pestaña "Reportes gerencia" ya no dice "solo lectura" (ahí se envían informes y se baja el respaldo).
+4) Accesibilidad: el texto gris de ayuda es más oscuro (se lee mejor con sol o poca luz); los botones pequeños miden al
+   menos 44 px; al abrir una ventana el foco va a su título y al cerrarla regresa al botón que la abrió; el tabulador no se
+   sale de la ventana abierta.
+5) Se quitó css/app.css (ya no se usaba). Si lo tienes en el repositorio, se puede borrar.
+Reglas: no cambian (siguen las de la versión 19).
+
 NOVEDADES DE LA VERSION 19 (11-nov-2026) — dos turnos y actualizaciones
 -----------------------------------------------------------------------
 1) Dos técnicos a la vez: las piezas pedidas, las revisiones del preventivo y las posposiciones se agregan una por una
@@ -104,7 +116,7 @@ CÓMO SUBIRLA
 ------------
 1) En el repositorio: Add file -> Upload files. Arrastra el CONTENIDO de esta carpeta (index.html, sw.js,
    manifest.json, LEEME.txt y las carpetas css, js, img), no la carpeta en sí. Commit changes.
-   (Los archivos con el mismo nombre se reemplazan. css/app.css ya no se usa: puedes borrarlo del repositorio.)
+   (Los archivos con el mismo nombre se reemplazan.)
 2) Settings -> Pages -> rama main, carpeta / (root).
 3) https://cfitnesscampestre-star.github.io/control-mantenimiento/
 4) Si el celular no toma el cambio, ciérrala por completo y ábrela otra vez.
@@ -192,7 +204,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 19). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 20). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL
