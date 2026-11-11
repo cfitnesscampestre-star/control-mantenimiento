@@ -223,12 +223,42 @@ function iniciaDatos(){
   db.ref('prevlog').limitToLast(400).on('value', function(s){ DB.prevlog = s.val() || {}; cacheSave(); softRender(); }, function(){});
   db.ref('informes').limitToLast(30).on('value', function(s){ DB.informes = s.val() || {}; softRender(); }, function(){});
 }
+/* Usuarios de los técnicos: los da de alta Gerencia (Control Gerencia → Ajustes → Técnicos de Control Mantenimiento).
+     /cuentas/{usuario} = { email, uid, nombre, activo }   usuario que escribe el técnico → su cuenta de Firebase
+     /tecnicos/{uid}    = true                            cuentas que pueden trabajar aquí
+   Si Gerencia lo desactiva o le asigna un PIN nuevo, la cuenta anterior deja de estar en /tecnicos y se cierra la sesión. */
+function cuentaDeUid(cs, uid){ var k = Object.keys(cs || {}).filter(function(x){ return cs[x] && cs[x].uid === uid; })[0]; return k ? cs[k] : null; }
 function cargaPerfil(u){
-  db.ref('usuarios/' + u.uid).once('value').then(function(s){
-    perfil = s.val() || null;
+  Promise.all([db.ref('usuarios/' + u.uid).once('value'), db.ref('cuentas').once('value')]).then(function(r){
+    perfil = r[0].val() || null;
+    var c = cuentaDeUid(r[1].val(), u.uid);
+    if (c && c.nombre && (!perfil || perfil.nombre !== c.nombre)) {     // el nombre lo puso Gerencia: no se pregunta
+      perfil = { nombre: c.nombre };
+      db.ref('usuarios/' + u.uid).set({ nombre: c.nombre, email: u.email || '', creado: now() }).catch(function(){});
+    }
     if (!perfil || !perfil.nombre) { ui.sheet = { k:'nombre' }; ui.sh = { nombre:'' }; }
     render();
   }).catch(function(){ render(); });
+}
+function revisaAcceso(u){
+  Promise.all([db.ref('tecnicos').once('value'), db.ref('cuentas').once('value')]).then(function(r){
+    var t = r[0].val() || {}, cs = r[1].val();
+    if (!cs || !Object.keys(cs).length || t[u.uid] === true || !usuario || usuario.uid !== u.uid) return;   // Gerencia aún no da de alta a nadie: se permite (transición)
+    ui.lgErr = 'Tu usuario ya no está activo: Gerencia lo desactivó o te asignó un PIN nuevo. Pídele tus datos a Gerencia.';
+    auth.signOut();
+  }).catch(function(){});
+}
+/* usuario que escribe el técnico → correo de su cuenta */
+function correoDe(u){
+  if (u.indexOf('@') >= 0) return Promise.resolve(u);
+  var antes = u + '@' + DOMINIO_ACCESO;                                 // cuentas hechas a mano en la consola (antes de Gerencia)
+  if (!db || !/^[a-z0-9_-]+$/.test(u)) return Promise.resolve(antes);
+  var espera = new Promise(function(ok, ko){ setTimeout(function(){ ko({ code:'auth/network-request-failed' }); }, 8000); });
+  return Promise.race([db.ref('cuentas/' + u).once('value'), espera]).then(function(s){
+    var c = s.val();
+    if (c && c.activo === false) throw { code:'cm/desactivado' };
+    return c && c.email ? c.email : antes;
+  });
 }
 function initFB(){
   try {
@@ -241,7 +271,7 @@ function initFB(){
       auth = firebase.auth();
       auth.onAuthStateChanged(function(u){
         usuario = u; authListo = true;
-        if (u) { iniciaDatos(); cargaPerfil(u); } else { perfil = null; ui.sheet = null; }
+        if (u) { iniciaDatos(); cargaPerfil(u); revisaAcceso(u); } else { perfil = null; ui.sheet = null; }
         render();
       });
     } else { authListo = true; iniciaDatos(); }
@@ -250,6 +280,7 @@ function initFB(){
 function nombreTec(){ return (perfil && perfil.nombre) || (usuario && usuario.email ? usuario.email.split('@')[0] : 'Técnico'); }
 function msgAuth(e){
   var c = (e && e.code) || '';
+  if (c === 'cm/desactivado') return 'Este usuario está desactivado. Pídele tus datos a Gerencia.';
   if (/user-not-found|wrong-password|invalid-credential|invalid-email|invalid-login/.test(c)) return 'Usuario o PIN incorrecto.';
   if (/too-many/.test(c)) return 'Demasiados intentos. Espera unos minutos.';
   if (/network/.test(c)) return 'Sin internet. Revisa tu conexión.';
@@ -264,7 +295,7 @@ function loginHTML(){
     '<label class="lg-lbl" for="lg_p">PIN</label><input id="lg_p" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Tu PIN">' +
     (ui.lgErr ? '<div class="lgerr" role="alert">' + esc(ui.lgErr) + '</div>' : '') +
     '<button class="btn cta block" style="margin-top:14px" data-a="entrar"' + (ui.lgBusy ? ' disabled' : '') + '>' + (ui.lgBusy ? 'Entrando…' : 'Entrar') + '</button>' +
-    '<div class="lg-help">' + (window.VISTA_PREVIA ? 'Vista previa: escribe cualquier usuario y PIN.' : 'Si olvidaste tu PIN, pide que lo restablezcan en Firebase.') + '</div></div></div>';
+    '<div class="lg-help">' + (window.VISTA_PREVIA ? 'Vista previa: escribe cualquier usuario y PIN.' : 'Tu usuario y tu PIN te los da Gerencia. Si olvidaste tu PIN, pídele uno nuevo.') + '</div></div></div>';
 }
 /* ---------- escrituras ----------
    Cada escritura se anota en el teléfono (cm_pend_v1) hasta que Firebase la confirma. Sin señal, Firebase la guarda en memoria y la
@@ -957,7 +988,7 @@ var A = {
     if (!u || !p) { ui.lgErr = 'Escribe tu usuario y tu PIN.'; render(); return; }
     if (!auth) { ui.lgErr = 'El acceso no está disponible. ' + (fbError || ''); render(); return; }
     ui.lgBusy = true; ui.lgErr = ''; render();
-    auth.signInWithEmailAndPassword(u.indexOf('@') >= 0 ? u : u + '@' + DOMINIO_ACCESO, p)
+    correoDe(u).then(function(correo){ return auth.signInWithEmailAndPassword(correo, p); })
       .then(function(){ ui.lgBusy = false; ui.lgErr = ''; })
       .catch(function(e){ ui.lgBusy = false; ui.lgErr = msgAuth(e); render(); });
   },

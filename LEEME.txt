@@ -15,12 +15,16 @@ AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proc
 VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
 Cada reporte lleva un cronómetro que corre desde que llega y se detiene al resolverse.
 
+NOVEDADES DE LA VERSION 17 (11-nov-2026) — Gerencia asigna los usuarios
+-------------------------------------------------------------------------
+Gerencia da de alta a cada técnico desde Control Gerencia (Ajustes -> "Técnicos de Control Mantenimiento"): usuario, nombre
+y PIN, que le entrega al técnico. También le asigna un PIN nuevo o lo desactiva. Ver "ACCESO" y reglas-firebase.txt.
+
 NOVEDADES DE LA VERSION 16 (11-nov-2026) — seguridad y datos
 ----------------------------------------------------------------
-ANTES DE SUBIRLA lee reglas-firebase.txt: hay que cerrar el registro libre de cuentas en Firebase, dar de alta a los técnicos
-en /tecnicos (su UID) y publicar las reglas nuevas.
+ANTES DE SUBIRLA lee reglas-firebase.txt: hay que crear la cuenta de Gerencia en Firebase y publicar las reglas nuevas.
 1) Reglas: un reporte ya no se puede borrar o reemplazar en bloque; cada reporte debe traer sus campos con el formato correcto.
-   El catálogo, el preventivo, las fotos y los informes solo los escriben los técnicos de la lista /tecnicos.
+   El catálogo, el preventivo, las fotos y los informes solo los escriben los técnicos que dio de alta Gerencia.
 2) La app ya no pinta en pantalla datos de un reporte sin limpiarlos (un reporte manipulado podía ejecutar código en el
    teléfono del técnico).
 3) "Editar equipo" ya no borra el inventario, la marca ni la última revisión preventiva del equipo.
@@ -80,23 +84,18 @@ CÓMO SUBIRLA
 
 ACCESO (usuario y PIN)
 ----------------------
-Al abrir la app aparece la carátula de acceso. Cada técnico tiene su propio usuario y PIN (Firebase Authentication,
-correo y contraseña). Al escribir el usuario "tecnico" la app usa tecnico@mantenimiento.club (el correo es solo un
-nombre interno: no recibe mensajes). El PIN es la contraseña y debe tener MÍNIMO 6 caracteres (por ejemplo, 6 dígitos).
-La primera vez que entra, la app le pide su nombre; ese nombre se guarda en cada reporte que atiende.
+Al abrir la app aparece la carátula de acceso. Cada técnico entra con el usuario y el PIN que le asigna GERENCIA en
+Control Gerencia -> Ajustes -> "Técnicos de Control Mantenimiento" (+ Técnico, PIN nuevo, Desactivar, Reactivar).
+Gerencia ve el PIN solo al asignarlo, para entregárselo; no se guarda. Si el técnico lo olvida, Gerencia le asigna uno nuevo.
+El nombre del técnico lo pone Gerencia: la app ya no lo pregunta (sale en cada reporte que atiende).
+Si Gerencia lo desactiva o le da un PIN nuevo, la app le cierra la sesión en su teléfono.
 
-Para activarlo (una sola vez), ANTES de subir la app:
-1) Firebase -> proyecto registro-mantenimiento-9854c -> Authentication -> Comenzar -> Método de acceso ->
-   "Correo electrónico/contraseña" -> Habilitar (solo la primera opción) -> Guardar.
-2) Authentication -> Usuarios -> Agregar usuario: correo tecnico@mantenimiento.club y como contraseña el PIN.
-3) Sube la app y entra con usuario "tecnico" y ese PIN.
-4) Authentication -> Configuración -> Acciones de usuario -> quita "Habilitar creación (registro)" (así nadie más se crea cuenta).
-5) Copia el UID del usuario y agrégalo en Realtime Database -> Datos -> tecnicos -> (UID): true (ver reglas-firebase.txt).
-6) Después de comprobar que entras, pega las reglas de reglas-firebase.txt en Realtime Database -> Reglas -> Publicar.
-Otro técnico: Authentication -> Agregar usuario (nombre@mantenimiento.club + su PIN) y agrega su UID en /tecnicos. También puede
-usarse un correo real: en "Usuario" se escribe el correo completo.
-Cambiar un PIN: en Authentication, elimina el usuario y créalo otra vez con el PIN nuevo (la app le volverá a pedir su nombre).
-Como el UID cambia, actualízalo también en /tecnicos.
+Por dentro (Firebase Authentication, correo y contraseña): cada usuario tiene una cuenta con un correo interno
+<usuario>.<aleatorio>@mantenimiento.club (no recibe mensajes) y el PIN como contraseña (MÍNIMO 6 caracteres).
+/cuentas/{usuario} dice qué correo usa cada usuario y /tecnicos/{uid} qué cuentas pueden trabajar. Solo Gerencia escribe
+ahí, con la cuenta gerencia@mantenimiento.club (misma contraseña que Gerencia en Control Gerencia).
+Preparación (una sola vez) y reglas: ver reglas-firebase.txt.
+Las cuentas hechas a mano antes (tecnico@mantenimiento.club) siguen entrando mientras Gerencia no dé de alta a nadie.
 Para abrir la app sin acceso (por ejemplo, mientras preparas Firebase): js/config.js -> REQUIERE_ACCESO = false.
 
 FOTOS DEL ANTES Y EL DESPUÉS
@@ -166,7 +165,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 16). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 17). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL
