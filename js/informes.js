@@ -58,8 +58,8 @@ function infRepsAll(){
   var hist = lista('historial').concat(DB.archivoListo ? archivados() : []);
   return abiertos().filter(esGerencia).concat(hist.filter(esGerencia).map(function(r){ return Object.assign({}, r, { cerrada:true }); }));
 }
-function infAreaDe(r){ return (r.origen === 'gerencia' && r.area) ? r.area : eqArea(eqById(r.equipoId)); }
-function infOrigen(r){ return esFitness(r) ? 'fitness' : 'gerencia'; }
+function infAreaDe(r){ return (r.origen === 'gerencia' && r.area) ? r.area : repArea(r); }
+function infOrigen(r){ return esFitness(r) ? 'fitness' : esGeneral(r) ? 'general' : 'gerencia'; }
 function infTec(r){ return r.resueltoPor || r.tecnico || ''; }
 function infRespMs(r){ return r.msRespuesta != null ? r.msRespuesta : r.visto ? r.visto - r.creado : null; }
 function infTotMs(r){ return r.estado === 'resuelto' ? (r.msTotal != null ? r.msTotal : r.resuelto ? r.resuelto - r.creado : null) : null; }
@@ -76,7 +76,7 @@ function infReps(c, forzar){
     if (c.urg && r.urg !== c.urg) return false;
     if (c.origen && infOrigen(r) !== c.origen) return false;
     if (c.area && infAreaDe(r) !== c.area) return false;
-    if (c.lugar && eqLugar(eqById(r.equipoId)) !== c.lugar) return false;
+    if (c.lugar && repLugar(r) !== c.lugar) return false;
     if (c.tec && infTec(r) !== c.tec) return false;
     if (c.compra && !(r.compra || r.cambio)) return false;
     return true;
@@ -88,8 +88,8 @@ function infOrdena(l, c, fp){
     antiguos:function(a, b){ return a.creado - b.creado; },
     mayor:function(a, b){ return infDurMs(b) - infDurMs(a); },
     menor:function(a, b){ return infDurMs(a) - infDurMs(b); },
-    equipo:function(a, b){ return eqById(a.equipoId).nombre.localeCompare(eqById(b.equipoId).nombre, 'es', { numeric:true }); },
-    lugar:function(a, b){ return eqLugar(eqById(a.equipoId)).localeCompare(eqLugar(eqById(b.equipoId)), 'es') || a.creado - b.creado; }
+    equipo:function(a, b){ return repNombre(a).localeCompare(repNombre(b), 'es', { numeric:true }); },
+    lugar:function(a, b){ return repLugar(a).localeCompare(repLugar(b), 'es') || a.creado - b.creado; }
   }[c.orden] || function(a, b){ return b.creado - a.creado; };
   return l.slice().sort(f);
 }
@@ -122,13 +122,13 @@ var INF_COLS_REP = [{ t:'Llegó', w:8 }, { t:'Equipo y lugar', w:17 }, { t:'Fall
 function infSecRep(titulo, l){
   var s = { t:titulo, cols:INF_COLS_REP, filas:[], sem:[] };
   l.forEach(function(r){
-    var e = eqById(r.equipoId), lug = eqLugar(e), ar = infAreaDe(r), resp = infRespMs(r), tot = infTotMs(r);
+    var lug = repLugar(r), ar = infAreaDe(r), resp = infRespMs(r), tot = infTotMs(r);
     var cp = [r.compra ? 'Compra' : '', r.cambio ? 'Cambio' : ''].filter(Boolean).join(' + ');
     s.filas.push([
       fechaHora(r.creado),
-      e.nombre + '\n' + lug + (ar && nrm(ar) !== nrm(lug) ? ' · ' + ar : ''),
+      repNombre(r) + (!repEq(r) && r.equipoTxt ? ' (fuera del catálogo)' : '') + '\n' + lug + (ar && nrm(ar) !== nrm(lug) ? ' · ' + ar : ''),
       (r.desc || '') + (r.urg && r.urg !== 'normal' ? '\n' + URG_TXT[r.urg] : '') + (r.diag ? '\nDiag.: ' + r.diag : ''),
-      (r.prof || 'Instructor') + (r.origen === 'gerencia' && r.area ? '\n' + r.area : r.clase ? '\n' + r.clase : ''),
+      quienReporta(r) + (r.origen === 'gerencia' && r.area ? '\n' + r.area : r.clase ? '\n' + r.clase : ''),
       (r.estado === 'resuelto' ? 'Resuelto' : r.estado === 'atencion' ? 'En proceso' : 'Sin atender') + (r.resuelto ? '\n' + fechaHora(r.resuelto) : '') + (r.cerrada ? '\nCerrado' : ''),
       infTec(r) || '—',
       resp != null ? durCorta(resp) : '—',
@@ -178,7 +178,7 @@ function infKpisRep(l){
     ['Reportes', String(l.length), res + ' resueltos · ' + (l.length - res) + ' pendientes'],
     ['Respuesta promedio', resp != null ? durCorta(resp) : '—', 'en abrir el reporte'],
     ['Solución promedio', tot != null ? durCorta(tot) : '—', 'de que llegó a resolverse'],
-    ['Tardó más', mx ? durCorta(infDurMs(mx)) : '—', mx ? eqById(mx.equipoId).nombre : 'sin reportes'],
+    ['Tardó más', mx ? durCorta(infDurMs(mx)) : '—', mx ? repNombre(mx) : 'sin reportes'],
     ['Compra o cambio', String(comp.length), costo ? 'estimado $' + costo.toLocaleString('es-MX') : 'sin costo capturado'],
     ['Urgentes', String(urg), 'urgentes o fuera de servicio']
   ];
@@ -195,7 +195,7 @@ function infTxtFiltros(c){
     if (c.compra) x.push('Solo los que requieren compra o cambio');
   }
   if (c.tipo === 'prev') { var P = { prog:'', todos:'', venc:'Vencidas', posp:'Con posposiciones', hecho:'Revisiones realizadas' }[c.estado]; if (P) x.push(P); }
-  if (c.origen) x.push(c.origen === 'fitness' ? 'Solo Fitness' : 'Solo otras áreas de Gerencia');
+  if (c.origen) x.push(c.origen === 'fitness' ? 'Solo Fitness' : c.origen === 'general' ? 'Solo mantenimiento general (técnicos y Gerencia)' : 'Solo otras áreas de Gerencia');
   if (c.area) x.push('Área: ' + c.area);
   if (c.lugar) x.push('Lugar: ' + c.lugar);
   if (c.tec) x.push('Atendió: ' + c.tec);
@@ -324,7 +324,7 @@ function infFiltrosHTML(c){
     : c.tipo === 'prev' ? [['prog', 'Programadas'], ['venc', 'Vencidas'], ['posp', 'Pospuestas'], ['hecho', 'Realizadas']] : null;
   var reps = infRepsAll();
   var areas = infUnicos(reps.map(infAreaDe).concat(lista('salones').map(function(s){ return s.area; })));
-  var lugares = infUnicos(lista('salones').map(function(s){ return s.nombre; }));
+  var lugares = infUnicos(lista('salones').map(function(s){ return s.nombre; }).concat(reps.map(repLugar).filter(function(x){ return x !== '—'; })));
   var tecs = infUnicos(reps.map(infTec));
   var per = INF_PER.filter(function(p){ return c.tipo === 'prev' || (p[0] !== 'p7' && p[0] !== 'p30'); });
   var panel = '';
@@ -334,7 +334,7 @@ function infFiltrosHTML(c){
       (c.tipo === 'rep' ? '<div class="lbl">Fecha que cuenta</div>' + infChips(c, 'fechaPor', [['llegada', 'Cuando llegó el reporte'], ['resuelto', 'Cuando se resolvió']]) : '') +
       '<div class="two">' +
       (c.tipo === 'rep' ? '<label class="f"><span>Urgencia</span><select data-inf="urg"><option value="">Todas</option>' + ['fuera', 'urgente', 'normal'].map(function(u){ return '<option value="' + u + '"' + (c.urg === u ? ' selected' : '') + '>' + URG_TXT[u] + '</option>'; }).join('') + '</select></label>' : '') +
-      (c.tipo !== 'prev' ? '<label class="f"><span>Origen</span><select data-inf="origen"><option value="">Todos</option><option value="fitness"' + (c.origen === 'fitness' ? ' selected' : '') + '>Solo Fitness</option><option value="gerencia"' + (c.origen === 'gerencia' ? ' selected' : '') + '>Otras áreas de Gerencia</option></select></label>' : '') +
+      (c.tipo !== 'prev' ? '<label class="f"><span>Origen</span><select data-inf="origen"><option value="">Todos</option><option value="fitness"' + (c.origen === 'fitness' ? ' selected' : '') + '>Solo Fitness</option><option value="gerencia"' + (c.origen === 'gerencia' ? ' selected' : '') + '>Otras áreas de Gerencia</option><option value="general"' + (c.origen === 'general' ? ' selected' : '') + '>Mantenimiento general</option></select></label>' : '') +
       '<label class="f"><span>Área</span><select data-inf="area">' + infOpciones(c.area, areas, 'Todas') + '</select></label>' +
       '<label class="f"><span>Lugar</span><select data-inf="lugar">' + infOpciones(c.lugar, lugares, 'Todos') + '</select></label>' +
       (c.tipo !== 'prev' ? '<label class="f"><span>Atendió</span><select data-inf="tec">' + infOpciones(c.tec, tecs, 'Cualquiera') + '</select></label>' : '') +

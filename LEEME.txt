@@ -15,6 +15,19 @@ AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proc
 VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
 Cada reporte lleva un cronómetro que corre desde que llega y se detiene al resolverse.
 
+NOVEDADES DE LA VERSION 18 (11-nov-2026) — reportes sin equipo del catálogo
+---------------------------------------------------------------------------
+1) "Nuevo reporte" (pestaña Reportes): el técnico deja un pendiente para quien siga (por ejemplo, el siguiente turno) o
+   reporta algo que no es un equipo del catálogo: una puerta, un barandal, una bicicleta nueva. Elige dónde (salón u otro
+   lugar escrito), el equipo de la lista o escribe qué es, qué hay que hacer y la urgencia.
+2) Los instructores (Control Fitness), los profesores y Gerencia (Control Gerencia) también pueden reportar algo que no está
+   en la lista: lo escriben y llega igual, con la etiqueta "No está en el catálogo".
+3) En un reporte así, "Dar de alta en el catálogo" crea el equipo (con su QR) y deja el reporte ligado a él.
+4) Los reportes del técnico y los de Gerencia (mantenimiento general) los quita el técnico de la lista cuando ya están
+   resueltos ("Quitar de la lista"; quedan en el historial). Los de instructores y profesores los siguen quitando ellos.
+5) En los informes, el origen "Mantenimiento general" se puede filtrar aparte.
+Reglas: vuelve a publicar reglas-firebase.txt (versión 18).
+
 NOVEDADES DE LA VERSION 17 (11-nov-2026) — Gerencia asigna los usuarios
 -------------------------------------------------------------------------
 Gerencia da de alta a cada técnico desde Control Gerencia (Ajustes -> "Técnicos de Control Mantenimiento"): usuario, nombre
@@ -165,7 +178,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 17). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 18). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL
@@ -217,7 +230,8 @@ ESTRUCTURA DE DATOS
                    creado (ms), estado: "nuevo"|"atencion"|"resuelto", visto (ms), diag, compra, cambio, costo,
                    resuelto (ms), msRespuesta, msAtencion, msTotal, tecnico, tecnicoId, resueltoPor,
                    fotoAntes, fotoDespues (indicadores; las fotos están en /fotos),
-                   origen: "fitness" (opcional) }
+                   origen: "fitness" | "gerencia" (profesor) | "mantenimiento" (técnico) | "general" (Gerencia),
+                   equipoTxt (qué es, cuando no está en el catálogo: no hay equipoId), lugarTxt (lugar escrito, sin salonId) }
 /historial/{id}  reportes que el instructor ya eliminó (se mueven aquí con cerrado = ms)
 /prevlog/{id}    { equipoId, salonId, t, por, nota }  bitácora de revisiones preventivas
 /archivo/{id}    reportes resueltos hace más de 30 días (copia del reporte + archivado, de)
