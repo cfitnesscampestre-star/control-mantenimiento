@@ -1,13 +1,14 @@
 'use strict';
 /* Al subir cambios: sube VERSION aquí y el número ?v= en index.html (van juntos).
    Si agregas archivos nuevos en css/, js/ o img/, agrégalos a ARCHIVOS. */
-const VERSION = 18;
+const VERSION = 19;
 const CACHE = 'cm-v' + VERSION;
 const ARCHIVOS = ['./', 'index.html', 'manifest.json', 'css/main.css', 'css/glassmorphism.css', 'css/mantenimiento.css', 'css/app-mobile.css', 'css/app-desktop.css',
   'js/config.js', 'js/qrcode.js', 'js/inventario.js', 'js/app.js', 'js/informes.js', 'img/membrete.png', 'img/logo.png', 'img/textura.svg', 'img/textura-clara.svg', 'img/icon-192.png', 'img/icon-512.png', 'img/icon-maskable-512.png', 'img/apple-touch-icon.png', 'img/favicon-32.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));
+  /* cache:'reload' = pedirlos al servidor, no a la caché del navegador: así la versión nueva nunca guarda un archivo viejo */
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS.map(u => new Request(u, { cache:'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));

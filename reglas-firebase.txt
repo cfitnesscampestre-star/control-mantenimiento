@@ -1,7 +1,7 @@
 REGLAS DE FIREBASE (Realtime Database -> Reglas)
 ================================================
-Versión 18 (igual que la 17, más un límite de largo para "equipoTxt" y "lugarTxt": los reportes de algo que no está
-en el catálogo). Los usuarios de los técnicos los da de alta Gerencia, desde Control Gerencia (Ajustes -> "Técnicos de Control
+Versión 19 (la 18 más un índice en historial por "cerrado", para archivar rápido los reportes viejos; la 18 agregó un
+límite de largo para "equipoTxt" y "lugarTxt"). Los usuarios de los técnicos los da de alta Gerencia, desde Control Gerencia (Ajustes -> "Técnicos de Control
 Mantenimiento"): les asigna usuario y PIN y se los entrega. Haz los pasos EN ESTE ORDEN.
 
 1) Cuenta de Gerencia en Control Mantenimiento (una sola vez):
@@ -48,6 +48,7 @@ Mantenimiento"): les asigna usuario y PIN y se los entrega. Haz los pasos EN EST
       }
     },
     "historial": {
+      ".indexOn": ["cerrado"],
       "$id": {
         ".write": true,
         ".validate": "newData.hasChild('creado') && $id.length <= 40 && $id.matches(/^[A-Za-z0-9_-]+$/)",

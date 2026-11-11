@@ -15,6 +15,20 @@ AMARILLO  "atencion"  en cuanto el técnico abre el reporte pasa solo a "en proc
 VERDE     "resuelto"  el técnico lo marcó resuelto (con su diagnóstico). El instructor lo elimina para quitarlo.
 Cada reporte lleva un cronómetro que corre desde que llega y se detiene al resolverse.
 
+NOVEDADES DE LA VERSION 19 (11-nov-2026) — dos turnos y actualizaciones
+-----------------------------------------------------------------------
+1) Dos técnicos a la vez: las piezas pedidas, las revisiones del preventivo y las posposiciones se agregan una por una
+   (antes se reescribía la lista completa y uno podía borrar lo del otro). Si dos abren el mismo reporte nuevo al mismo
+   tiempo, queda como "Atiende" el primero.
+2) Versión nueva: al subir cambios, la app lo detecta (al abrirla, al volver a ella y cada 30 minutos) y muestra
+   "Hay una versión nueva de la app · Recargar". Al instalarse, la versión nueva siempre baja archivos frescos.
+3) Archivo: los reportes viejos del historial se archivan aunque no estén entre los últimos 200, y si quedan muchos,
+   sigue al minuto siguiente en lugar de esperar 6 horas.
+4) Al cerrar sesión se borra la copia de los datos del teléfono (lo que falte por enviar se conserva y se envía al
+   volver a entrar).
+Reglas: publica la versión 19 de reglas-firebase.txt (agrega un índice en historial). Sin ella todo funciona, pero el
+archivo descarga el historial completo para buscar los viejos.
+
 NOVEDADES DE LA VERSION 18 (11-nov-2026) — reportes sin equipo del catálogo
 ---------------------------------------------------------------------------
 1) "Nuevo reporte" (pestaña Reportes): el técnico deja un pendiente para quien siga (por ejemplo, el siguiente turno) o
@@ -178,7 +192,7 @@ Se suben a la carpeta img/equipos del repositorio y se llaman por nombre de arch
 
 AL SUBIR CAMBIOS
 ----------------
-Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 18). Si agregas archivos nuevos en css/, js/ o img/,
+Sube el número ?v= en index.html y VERSION en sw.js (van juntos; hoy están en 19). Si agregas archivos nuevos en css/, js/ o img/,
 agrégalos a la lista ARCHIVOS de sw.js (js/qrcode.js ya está).
 
 CARRUSEL
@@ -236,7 +250,7 @@ ESTRUCTURA DE DATOS
 /prevlog/{id}    { equipoId, salonId, t, por, nota }  bitácora de revisiones preventivas
 /archivo/{id}    reportes resueltos hace más de 30 días (copia del reporte + archivado, de)
 /equipos/{id}    además: prevUlt (última revisión), prevPor, prevPosp (pospuesto hasta); /salones/{id}.prevFreq (días)
-/preventivo/{id} { titulo, detalle, salonId, freq (días), proxima (ms), posp[], hist[] }
+/preventivo/{id} { titulo, detalle, salonId, freq (días), proxima (ms), posp{clave:{motivo,de,a}}, hist{clave:ms} }  (antes listas; se leen igual)
 /fotos/{id del reporte} { antes, despues }  fotos reducidas (texto "data:image/jpeg;base64,...")
 /usuarios/{uid}  { nombre, email }  técnicos que han entrado
 Control Gerencia reconoce un reporte de Fitness por origen:"fitness" o porque profId es el número de instructor.
