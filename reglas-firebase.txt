@@ -34,7 +34,7 @@ editar el catálogo, el preventivo ni las fotos.
         "urg": { ".validate": "newData.isString() && newData.val().matches(/^(normal|urgente|fuera)$/)" },
         "visto": { ".validate": "newData.isNumber()" },
         "resuelto": { ".validate": "newData.isNumber()" },
-        "desc": { ".validate": "newData.isString() && newData.val().length <= 2000" },
+        "desc": { ".validate": "newData.isString() && newData.val().length <= 10000" },
         "diag": { ".validate": "newData.isString() && newData.val().length <= 4000" }
       }
     },
