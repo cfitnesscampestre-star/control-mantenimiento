@@ -312,7 +312,7 @@ function escribe(op, ruta, valor){
   if (!db) { toast('Sin conexión con la base de datos'); var x = new Error('sin base'); x.cmAvisado = true; return Promise.reject(x); }
   var w = { k: now() + '-' + Math.random().toString(36).slice(2, 7), op: op, ruta: ruta, v: valor === undefined ? null : valor };
   PEND.push(w); pendGuarda();
-  var ref = db.ref(ruta);
+  var ref = ruta ? db.ref(ruta) : db.ref();
   return (op === 'set' ? ref.set(w.v) : ref.update(w.v)).then(function(){ pendQuita(w.k); },
     function(e){ pendQuita(w.k); falla(e, 'No se pudo guardar'); });
 }
@@ -371,7 +371,21 @@ function eqLugar(e){ return salonById(e.salonId).nombre; }
 function eqArea(e){ return salonById(e.salonId).area; }
 function abiertos(){ return lista('reportes'); }
 /* Lo que ve Control Gerencia: reportes de Fitness (origen fitness o profId numérico) y de los profesores de Gerencia (origen gerencia + areaId). Los de prueba no cuentan. */
-function esGerencia(r){ return !esPrueba(r) && (esFitness(r) || (r.origen === 'gerencia' && !!r.areaId)); }
+function esGerencia(r){ return !esPrueba(r) && (esFitness(r) || (r.origen === 'gerencia' && !!r.areaId) || esGeneral(r)); }
+/* Reportes sin equipo del catálogo: el instructor, el profesor, el técnico o Gerencia escriben qué falla (equipoTxt) y, si no es un
+   salón del catálogo, dónde (lugarTxt). Los que hacen el técnico (origen "mantenimiento") y Gerencia (origen "general") son de
+   mantenimiento general: nadie los "elimina" desde otra app, así que el técnico los quita de la lista cuando quedan resueltos. */
+function esGeneral(r){ return r.origen === 'mantenimiento' || r.origen === 'general'; }
+function repEq(r){ return r.equipoId && (DB.equipos || {})[r.equipoId] ? eqById(r.equipoId) : null; }
+function repNombre(r){ var e = repEq(r); return e ? e.nombre : r.equipoTxt ? r.equipoTxt : r.equipoId ? 'Equipo (eliminado)' : 'Sin equipo'; }
+function repLugar(r){
+  var e = repEq(r);
+  if (e && e.salonId) return eqLugar(e);
+  if (r.salonId && (DB.salones || {})[r.salonId]) return salonById(r.salonId).nombre;
+  return r.lugarTxt || '—';
+}
+function repArea(r){ var e = repEq(r); return e ? eqArea(e) : r.salonId && (DB.salones || {})[r.salonId] ? salonById(r.salonId).area : 'General'; }
+function quienReporta(r){ return r.prof || (r.origen === 'mantenimiento' ? 'Mantenimiento' : r.origen === 'general' ? 'Gerencia' : 'Instructor'); }
 function esFitness(r){ return r.origen === 'fitness' || (r.origen == null && /^\d+$/.test(String(r.profId == null ? '' : r.profId))); }   // igual que Control Gerencia
 function semaforo(r){ return r.estado === 'resuelto' ? 'verde' : r.estado === 'atencion' ? 'amar' : 'rojo'; }
 function diasPrev(p){ return Math.round((p.proxima - sod(now())) / DAY); }
@@ -435,9 +449,10 @@ function timerHTML(r){
 }
 function tick(){ var n = now(); document.querySelectorAll('.timer[data-t0]:not(.stop)').forEach(function(el){ el.textContent = dur(n - (+el.getAttribute('data-t0'))); }); }
 function repCard(r, abre){
-  var e = eqById(r.equipoId), x = [];
+  var x = [];
   if (r.otroLugar) x.push('<small><b>Reportado desde otro salón</b></small>');
-  if (r.cerrada) x.push('<small>El instructor ya cerró este aviso</small>');
+  if (r.cerrada) x.push('<small>' + (esGeneral(r) ? 'Ya se quitó de la lista' : 'El instructor ya cerró este aviso') + '</small>');
+  if (!repEq(r) && r.equipoTxt) x.push('<small><b>No está en el catálogo</b></small>');
   if (r.tecnico && r.estado !== 'nuevo') x.push('<small>Atiende: ' + esc(r.tecnico) + '</small>');
   if (r.fotoAntes || r.fotoDespues) x.push('<small>Fotos: antes ' + (r.fotoAntes ? '✓' : '—') + ' · después ' + (r.fotoDespues ? '✓' : '—') + '</small>');
   var espP = arr(r.piezas).filter(function(p){ return !p.llego; })[0];
@@ -445,8 +460,8 @@ function repCard(r, abre){
   if (r.diag) x.push('<small><b>Diagnóstico:</b> ' + esc(r.diag) + '</small>');
   if (r.compra || r.cambio) x.push('<small>' + (r.compra ? 'Requiere compra' : '') + (r.compra && r.cambio ? ' · ' : '') + (r.cambio ? 'Requiere cambio' : '') + (r.costo ? ' · estimado $' + esc(r.costo) : '') + '</small>');
   var inner = '<div class="rep-h">' + pillEstado(r) + pillUrg(r) + (abre ? '<span class="go">' + ic('next') + '</span>' : '') + '</div>' +
-    '<b class="rep-t">' + esc(e.nombre) + '</b><span class="rep-d">' + esc(r.desc) + '</span>' +
-    '<small>' + esc(eqLugar(e)) + ' · ' + esc(r.prof || 'Instructor') + (r.origen === 'gerencia' && r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · llegó ' + fechaHora(r.creado) + '</small>' +
+    '<b class="rep-t">' + esc(repNombre(r)) + '</b><span class="rep-d">' + esc(r.desc) + '</span>' +
+    '<small>' + esc(repLugar(r)) + ' · ' + esc(quienReporta(r)) + (r.origen === 'gerencia' && r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · llegó ' + fechaHora(r.creado) + '</small>' +
     (x.length ? '<div class="rep-x">' + x.join('') + '</div>' : '') + timerHTML(r);
   return abre ? '<button class="rep ' + semaforo(r) + '" data-a="openRep" data-v="' + esc(r.id) + '">' + inner + '</button>'
               : '<div class="rep ' + semaforo(r) + '">' + inner + '</div>';
@@ -510,7 +525,8 @@ function vReportes(){
     (ui.urgAbre ? '<div class="chips">' + [['fuera', 'No se puede usar'], ['urgente', 'Urgente'], ['normal', 'Normal']].map(function(f){
       return '<button class="chip' + (ui.urg === f[0] ? ' on' : '') + '" data-a="urg" data-v="' + f[0] + '">' + f[1] + '</button>';
     }).join('') + '</div>' : '');
-  return empiezaAqui() + barraPeriodo(R, base.length) + urgBarra +
+  return empiezaAqui() + barraPeriodo(R, base.length) +
+    '<div class="btns" style="margin:0 0 10px"><button class="btn primary" data-a="nuevoRep">' + ic('plus') + ' Nuevo reporte</button></div>' + urgBarra +
     '<div class="carr-nav"><div><b>' + titulo + '</b><small>' + orden + '</small></div>' +
       (l.length ? '<div class="carr-ctl"><span id="carr-n">1 de ' + l.length + '</span>' +
         (l.length > 1 ? '<button class="ibtn" data-a="carrPausa" aria-label="' + (ui.carrPausa ? 'Reanudar el carrusel' : 'Pausar el carrusel') + '">' + ic(ui.carrPausa ? 'play' : 'pausa') + '</button>' : '') +
@@ -604,7 +620,7 @@ function vGerencia(){
   var pospN = pv.reduce(function(n, p){ return n + arr(p.posp).length; }, 0);
   var compras = ab.filter(function(r){ return (r.compra || r.cambio) && r.estado !== 'resuelto'; });
   var total = compras.reduce(function(n, r){ return n + (parseFloat(r.costo) || 0); }, 0);
-  return '<div class="vinc"><b>Esto es lo que ve Control Gerencia</b><span>Cuentan los reportes de instructores de Fitness y de los profesores de las áreas de Gerencia; los de ejemplo no se incluyen. Toca un indicador para ver su lista.</span></div>' +
+  return '<div class="vinc"><b>Esto es lo que ve Control Gerencia</b><span>Cuentan los reportes de instructores de Fitness, de los profesores de las áreas de Gerencia y los de mantenimiento general (de los técnicos y de Gerencia); los de ejemplo no se incluyen. Toca un indicador para ver su lista.</span></div>' +
     '<div class="kpis k3">' + infKpiBtn('sin', 'Sin atender', sin.length, sin.length ? 'problemas en rojo' : 'sin problemas', { cls: sin.length ? 'bad' : 'ok', color: 'var(--bad)' }) +
       infKpiBtn('pro', 'En proceso', pro.length, 'ya los vio mantenimiento', { cls: pro.length ? 'warn' : '', color: 'var(--warn)' }) +
       infKpiBtn('res', 'Atendidos', atend, 'resueltos en 30 días', { cls: 'ok', color: 'var(--ok)' }) + '</div>' +
@@ -675,18 +691,41 @@ function sheetRep(){
     '<div class="vinc off"><b>El instructor ya cerró este reporte</b><span>Ya no se puede modificar' + (ui.sh && (ui.sh.diag || '').trim() ? '. Si necesitas lo que escribiste, cópialo antes de cerrar.' : '.') + '</span></div>' +
     (ui.sh && (ui.sh.diag || '').trim() ? '<label class="f"><span>Lo que escribiste</span><textarea readonly>' + esc(ui.sh.diag) + '</textarea></label>' : '') +
     '<button class="btn block" data-a="close">Cerrar</button>';
-  var r = Object.assign({ id: ui.sheet.id }, raw), e = eqById(r.equipoId), sh = ui.sh, hecho = r.estado === 'resuelto';
-  return mHead(e.nombre) +
+  var r = Object.assign({ id: ui.sheet.id }, raw), sh = ui.sh, hecho = r.estado === 'resuelto';
+  return mHead(repNombre(r)) +
     '<div class="rep ' + semaforo(r) + '" style="margin-bottom:14px"><div class="rep-h">' + pillEstado(r) + pillUrg(r) + '</div>' +
-    '<span class="rep-d">' + esc(r.desc) + '</span><small>' + esc(eqLugar(e)) + ' · ' + esc(r.prof || 'Instructor') + (r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · ' + hace(r.creado) + '</small>' +
-    timerHTML(r) + '</div>' + tiemposHTML(r) + fotosHTML(r) + piezaHTML(r, sh, hecho) +
+    '<span class="rep-d">' + esc(r.desc) + '</span><small>' + esc(repLugar(r)) + ' · ' + esc(quienReporta(r)) + (r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · ' + hace(r.creado) + '</small>' +
+    timerHTML(r) + '</div>' +
+    (!repEq(r) && r.equipoTxt ? '<div class="card" style="margin-bottom:14px"><b>“' + esc(r.equipoTxt) + '” no está en el catálogo</b>' +
+      '<div class="sub" style="margin:2px 0 8px">Si es un equipo nuevo, dalo de alta: el reporte queda ligado a él y ya tendrá su QR. Si es algo general (una puerta, un barandal), déjalo así.</div>' +
+      '<button class="btn sm" data-a="repAltaEq">Dar de alta en el catálogo</button></div>' : '') +
+    tiemposHTML(r) + fotosHTML(r) + piezaHTML(r, sh, hecho) +
     '<label class="f"><span>Qué encontraste y qué hiciste</span><textarea data-f="diag"' + (hecho ? ' disabled' : '') + ' placeholder="Describe la anomalía y la atención">' + esc(sh.diag) + '</textarea></label>' +
     '<label class="chk"><input type="checkbox" data-f="compra"' + (sh.compra ? ' checked' : '') + (hecho ? ' disabled' : '') + '> Necesita comprar algo</label>' +
     '<label class="chk"><input type="checkbox" data-f="cambio"' + (sh.cambio ? ' checked' : '') + (hecho ? ' disabled' : '') + '> Necesita cambio de pieza o equipo</label>' +
     '<label class="f" style="margin-top:8px"><span>Costo estimado (opcional)</span><input inputmode="decimal" data-f="costo" value="' + esc(sh.costo) + '" placeholder="0"' + (hecho ? ' disabled' : '') + '></label>' +
-    (hecho ? '<div class="sub">Este reporte ya está resuelto. Se quita cuando el instructor lo elimine.</div>' :
+    (hecho ? (esGeneral(r) ? '<div class="sub">Este reporte ya está resuelto. Quítalo de la lista cuando ya no haga falta verlo (queda en el historial).</div><button class="btn block" data-a="repQuita">Quitar de la lista</button>'
+        : '<div class="sub">Este reporte ya está resuelto. Se quita cuando ' + (r.origen === 'gerencia' ? 'el profesor' : 'el instructor') + ' lo elimine.</div>') :
       (esperaPz(r) ? '<div class="sub" style="margin-bottom:8px"><b>No se puede marcar resuelto mientras se espera la pieza.</b> Cuando llegue, toca “Ya llegó la pieza”.</div>' : '') +
       '<div class="btns"><button class="btn" data-a="saveRep">Guardar nota</button><button class="btn primary" data-a="resolveRep"' + (esperaPz(r) ? ' disabled' : '') + '>Marcar resuelto</button></div>');
+}
+function sheetNuevo(){
+  var sh = ui.sh, sals = lista('salones').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
+  var eqs = sh.salonId && sh.salonId !== '_otro' ? lista('equipos').filter(function(e){ return e.salonId === sh.salonId; }).sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); }) : [];
+  var libre = !sh.equipoId;
+  return mHead('Nuevo reporte') +
+    '<div class="sub">Para dejar pendiente algo que viste en el recorrido (por ejemplo, para el siguiente turno) o una falla que no es de un equipo del catálogo: una puerta, un barandal, una bicicleta nueva.</div>' +
+    '<label class="f"><span>Dónde</span><select data-f="salonId" data-render="1"><option value="">Elige el salón o lugar…</option>' +
+      sals.map(function(x){ return '<option value="' + esc(x.id) + '"' + (sh.salonId === x.id ? ' selected' : '') + '>' + esc(x.nombre) + '</option>'; }).join('') +
+      '<option value="_otro"' + (sh.salonId === '_otro' ? ' selected' : '') + '>Otro lugar (escribirlo)</option></select></label>' +
+    (sh.salonId === '_otro' ? '<label class="f"><span>¿Qué lugar?</span><input data-f="lugarTxt" maxlength="120" placeholder="Ej. Pasillo de vestidores, Alberca" value="' + esc(sh.lugarTxt) + '"></label>' : '') +
+    (eqs.length ? '<label class="f"><span>Equipo</span><select data-f="equipoId" data-render="1"><option value="">No está en la lista / no es un equipo</option>' +
+      eqs.map(function(e){ return '<option value="' + esc(e.id) + '"' + (sh.equipoId === e.id ? ' selected' : '') + '>' + esc(e.nombre) + '</option>'; }).join('') + '</select></label>' : '') +
+    (libre ? '<label class="f"><span>¿Qué es? (equipo o cosa a revisar)</span><input data-f="equipoTxt" maxlength="120" placeholder="Ej. Barandal de la escalera, Bicicleta nueva sin número" value="' + esc(sh.equipoTxt) + '"></label>' : '') +
+    '<label class="f"><span>Qué hay que hacer</span><textarea data-f="desc" maxlength="2000" placeholder="Ej. Pintar el barandal; la puerta se cayó, asegurarla">' + esc(sh.desc) + '</textarea></label>' +
+    '<div class="lbl" style="font-weight:600;font-size:13px;color:var(--ink-2)">Urgencia</div><div class="chips">' +
+      [['normal', 'Normal'], ['urgente', 'Urgente'], ['fuera', 'No se puede usar']].map(function(u){ return '<button class="chip' + (sh.urg === u[0] ? ' on' : '') + '" data-a="nuevoUrg" data-v="' + u[0] + '">' + u[1] + '</button>'; }).join('') + '</div>' +
+    '<button class="btn cta block" style="margin-top:12px" data-a="nuevoGuarda">Guardar reporte</button>';
 }
 function sheetNombre(){
   return mHead('¿Cómo te llamas?') + '<div class="sub">Tu nombre aparece en los reportes que atiendas.</div>' +
@@ -964,7 +1003,7 @@ function render(){
     : !online ? '<div class="vinc off"><b>Sin internet</b><span>Los cambios se envían al volver la señal. No cierres la app hasta entonces.</span></div>' : '';
   document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + errBanner + body + '</main></div>' + bottomnav() + '</div>';
   var m = document.getElementById('modal'), k = ui.sheet && ui.sheet.k, html = '';
-  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'prevEq' ? sheetPrevEq() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : sheetPrevForm();
+  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'prevEq' ? sheetPrevEq() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : k === 'nuevo' ? sheetNuevo() : sheetPrevForm();
   if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
   else { m.hidden = true; m.innerHTML = ''; document.body.style.overflow = ''; }
   if (k === 'infdoc') infMonta();
@@ -1068,6 +1107,32 @@ var A = {
     var t = now(), pz = arr(r.piezas).map(function(x){ return x.llego ? x : Object.assign({}, x, { llego:t }); });
     confirma(actualiza('reportes/' + id, { piezas:pz, esperaPieza:false }), 'Listo. Se registró la hora en que llegó la pieza.'); render();
   },
+  /* reportes que levanta el técnico (o sin equipo del catálogo) */
+  nuevoRep:function(){ ui.sheet = { k:'nuevo' }; ui.shCambio = false; ui.sh = { salonId:'', lugarTxt:'', equipoId:'', equipoTxt:'', desc:'', urg:'normal' }; render(); },
+  nuevoUrg:function(v){ ui.sh.urg = v; render(); },
+  nuevoGuarda:function(){
+    var s = ui.sh, eq = s.equipoId && DB.equipos[s.equipoId], txt = (s.equipoTxt || '').trim(), lug = (s.lugarTxt || '').trim(), d = (s.desc || '').trim();
+    if (!s.salonId) return toast('Elige dónde es');
+    if (s.salonId === '_otro' && !lug) return toast('Escribe qué lugar es');
+    if (!eq && !txt) return toast('Escribe qué es (el equipo o la cosa a revisar)');
+    if (!d) return toast('Escribe qué hay que hacer');
+    var id = nuevoId('reportes'), t = now();
+    var rep = limpia({ equipoId: eq ? s.equipoId : undefined, equipoTxt: eq ? undefined : txt.slice(0, 120), salonId: s.salonId !== '_otro' ? s.salonId : undefined,
+      lugarTxt: s.salonId === '_otro' ? lug.slice(0, 120) : undefined, desc: d.slice(0, 2000), urg: s.urg || 'normal', creado: t, estado:'nuevo',
+      origen:'mantenimiento', prof: nombreTec(), profId: 'mant-' + (usuario ? usuario.uid : 'tecnico'), otroLugar:false });
+    ui.sheet = null; confirma(guarda('reportes/' + id, rep), 'Reporte guardado. Queda en la lista para quien lo atienda.'); render();
+  },
+  repQuita:function(){
+    var id = ui.sheet.id, r = DB.reportes[id]; if (!r) return repCerrado();
+    if (!confirm('¿Quitar este reporte de la lista? Queda guardado en el historial.')) return;
+    var up = {}; up['reportes/' + id] = null; up['historial/' + id] = Object.assign({}, r, { cerrado: now() });
+    ui.sheet = null; confirma(escribe('update', '', up), 'Reporte quitado de la lista'); render();
+  },
+  repAltaEq:function(){
+    var r = DB.reportes[ui.sheet.id]; if (!r) return repCerrado();
+    var sid = r.salonId && DB.salones[r.salonId] ? r.salonId : (lista('salones')[0] || {}).id || '';
+    ui.shRep = ui.sh; ui.sheet = { k:'eqform', rep: ui.sheet.id }; ui.shCambio = false; ui.sh = { nombre: r.equipoTxt || '', salonId: sid, foto:'' }; render();
+  },
   /* recorrido preventivo por salón */
   prevSalon:function(v){ ui.prevSalon = v || null; ui.prevSolo = false; ui.reset = true; render(); top0(); },
   prevSolo:function(){ ui.prevSolo = !ui.prevSolo; render(); },
@@ -1119,10 +1184,14 @@ var A = {
   eqSave:function(){
     var s = ui.sh; if (!s.nombre.trim()) return toast('Escribe el nombre del equipo');
     if (!s.salonId) return toast('Elige el salón del equipo');
-    var id = ui.sheet.id || nuevoId('equipos'), campos = { nombre:s.nombre.trim(), salonId:s.salonId, foto:s.foto.trim() };
+    var id = ui.sheet.id || nuevoId('equipos'), campos = { nombre:s.nombre.trim(), salonId:s.salonId, foto:s.foto.trim() }, deRep = ui.sheet.rep;
     /* al editar se actualizan solo estos campos: así no se borran el inventario, la marca ni la revisión preventiva */
-    confirma(DB.equipos[id] ? actualiza('equipos/' + id, campos) : guarda('equipos/' + id, campos), 'Equipo guardado');
-    ui.sheet = null; render();
+    var p = DB.equipos[id] ? actualiza('equipos/' + id, campos) : guarda('equipos/' + id, campos);
+    if (deRep && DB.reportes[deRep]) {                     // alta desde un reporte sin equipo del catálogo: el reporte queda ligado al equipo nuevo
+      p = p.then(function(){ return actualiza('reportes/' + deRep, { equipoId:id, salonId:s.salonId }); });
+      confirma(p, 'Equipo dado de alta y ligado al reporte'); ui.sheet = { k:'rep', id:deRep }; ui.sh = Object.assign({ diag:'', compra:false, cambio:false, costo:'' }, ui.shRep || {});
+    } else { confirma(p, 'Equipo guardado'); ui.sheet = null; }
+    render();
   },
   eqDel:function(){
     var id = ui.sheet.id; if (abiertos().some(function(r){ return r.equipoId === id; })) return toast('Tiene reportes abiertos. Ciérralos antes de eliminarlo.');
@@ -1212,7 +1281,10 @@ document.addEventListener('change', function(e){
 });
 document.addEventListener('input', function(e){
   var t = e.target, f = t.getAttribute && t.getAttribute('data-f');
-  if (f && ui.sh) { ui.sh[f] = t.type === 'checkbox' ? t.checked : t.value; if (ui.sheet) ui.shCambio = true; guardaSheet(); }
+  if (f && ui.sh) {
+    ui.sh[f] = t.type === 'checkbox' ? t.checked : t.value; if (ui.sheet) ui.shCambio = true; guardaSheet();
+    if (t.getAttribute('data-render')) { if (f === 'salonId' && ui.sheet && ui.sheet.k === 'nuevo') ui.sh.equipoId = ''; render(); }
+  }
 });
 document.addEventListener('focusout', function(){ setTimeout(function(){ if (ui.dirty && !escribiendo()) render(); }, 150); });
 document.addEventListener('error', function(e){ var t = e.target; if (t && t.tagName === 'IMG' && t.hasAttribute('data-fallback')) { t.style.display = 'none'; if (t.parentNode) t.parentNode.classList.add('nofoto'); } }, true);

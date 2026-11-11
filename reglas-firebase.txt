@@ -1,6 +1,7 @@
 REGLAS DE FIREBASE (Realtime Database -> Reglas)
 ================================================
-Versión 17. Los usuarios de los técnicos los da de alta Gerencia, desde Control Gerencia (Ajustes -> "Técnicos de Control
+Versión 18 (igual que la 17, más un límite de largo para "equipoTxt" y "lugarTxt": los reportes de algo que no está
+en el catálogo). Los usuarios de los técnicos los da de alta Gerencia, desde Control Gerencia (Ajustes -> "Técnicos de Control
 Mantenimiento"): les asigna usuario y PIN y se los entrega. Haz los pasos EN ESTE ORDEN.
 
 1) Cuenta de Gerencia en Control Mantenimiento (una sola vez):
@@ -41,7 +42,9 @@ Mantenimiento"): les asigna usuario y PIN y se los entrega. Haz los pasos EN EST
         "visto": { ".validate": "newData.isNumber()" },
         "resuelto": { ".validate": "newData.isNumber()" },
         "desc": { ".validate": "newData.isString() && newData.val().length <= 10000" },
-        "diag": { ".validate": "newData.isString() && newData.val().length <= 4000" }
+        "diag": { ".validate": "newData.isString() && newData.val().length <= 4000" },
+        "equipoTxt": { ".validate": "newData.isString() && newData.val().length <= 200" },
+        "lugarTxt": { ".validate": "newData.isString() && newData.val().length <= 200" }
       }
     },
     "historial": {
