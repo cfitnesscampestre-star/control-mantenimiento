@@ -361,7 +361,7 @@ function infEnviadosHTML(){
   var l = lista('informes').sort(function(a, b){ return b.creado - a.creado; });
   return '<div class="h2">Enviados a Control Gerencia</div>' + (l.length ? '<div class="stack">' + l.map(function(x){
     return '<div class="card"><div class="row"><div><b>' + esc(x.titulo) + '</b><small>' + esc(fechaHora(x.creado)) + (x.por ? ' · ' + esc(x.por) : '') + ' · ' + plu(x.n || 0, 'renglón', 'renglones') + '</small>' + (x.sub ? '<small>' + esc(x.sub) + '</small>' : '') + '</div></div>' +
-      '<div class="btns" style="margin-top:10px"><button class="btn sm" data-a="infAbre" data-v="' + x.id + '">Ver e imprimir</button><button class="btn sm danger" data-a="infQuita" data-v="' + x.id + '">Quitar de Gerencia</button></div></div>';
+      '<div class="btns" style="margin-top:10px"><button class="btn sm" data-a="infAbre" data-v="' + esc(x.id) + '">Ver e imprimir</button><button class="btn sm danger" data-a="infQuita" data-v="' + esc(x.id) + '">Quitar de Gerencia</button></div></div>';
   }).join('') + '</div>' : empty('Todavía no has enviado ningún reporte. Genera uno y toca “Enviar a Control Gerencia”.'));
 }
 function infGeneradorHTML(){

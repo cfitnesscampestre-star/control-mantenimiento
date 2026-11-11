@@ -40,6 +40,8 @@ var FOT = {};      // fotos ya cargadas: FOT[idDelReporte] = { antes, despues } 
 function sod(t){ var d = new Date(t); d.setHours(0,0,0,0); return d.getTime(); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function now(){ return Date.now(); }
+function num(x){ var n = +x; return isFinite(n) ? n : 0; }          /* fechas en ms: nunca se pinta un texto ajeno en un atributo */
+function fotoOk(x){ return typeof x === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(x) ? x : ''; }
 function arr(x){ return Array.isArray(x) ? x : x ? Object.keys(x).map(function(k){ return x[k]; }) : []; }
 function lista(k){ return Object.keys(DB[k] || {}).map(function(id){ return Object.assign({ id: id }, DB[k][id]); }); }
 function limpia(o){ var r = {}; Object.keys(o).forEach(function(k){ if (o[k] !== undefined) r[k] = o[k]; }); return r; }
@@ -116,7 +118,7 @@ function guardaFoto(id, tipo, data){
   FOT[id] = Object.assign({}, FOT[id]); FOT[id][tipo] = data; softRender();
   var o = {}; o[tipo] = data;
   return db.ref('fotos/' + id).update(o).then(function(){ var f = {}; f[tipo === 'antes' ? 'fotoAntes' : 'fotoDespues'] = true; return actualiza('reportes/' + id, f); })
-    .then(function(){ toast('Foto guardada'); }).catch(function(e){ toast('No se pudo guardar la foto: ' + ((e && e.message) || '')); });
+    .then(function(){ toast('Foto guardada'); }).catch(function(e){ if (!(e && e.cmAvisado)) toast('No se pudo guardar la foto: ' + ((e && e.message) || '')); });
 }
 function subeFoto(tipo, file){                 /* foto elegida de la galería o tomada con la cámara del teléfono */
   var sh = ui.sheet; if (!sh || sh.k !== 'rep' || !file) return; var id = sh.id;
@@ -156,7 +158,7 @@ document.addEventListener('click', function(e){
   if (a === 'shot') camDisparo(); else if (a === 'x') camCierra(); else if (a === 'gal') { camCierra(); camGaleria(tipo); }
 });
 function fotosHTML(r){
-  var f = FOT[r.id], g = f || {}, hecho = r.estado === 'resuelto';
+  var f = FOT[r.id], g0 = f || {}, g = { antes: fotoOk(g0.antes), despues: fotoOk(g0.despues) }, hecho = r.estado === 'resuelto';
   var bloque = function(tipo, tit, ayuda){
     var img = g[tipo];
     return '<div class="foto"><div class="foto-t"><b>' + tit + '</b>' + (img ? pill('Tomada', 'ok') : pill('Pendiente', 'mut')) + '</div>' +
@@ -214,32 +216,62 @@ function respaldoManual(conFotos){
 function iniciaDatos(){
   if (datosIniciados) return; datosIniciados = true;
   ['equipos', 'salones', 'reportes', 'preventivo'].forEach(function(k){
-    db.ref(k).on('value', function(s){ DB[k] = s.val() || {}; ready = true; fbError = ''; cacheSave(); softRender(); },
+    db.ref(k).on('value', function(s){ DB[k] = s.val() || {}; ready = true; fbError = ''; if (k === 'reportes') { vivoRep = true; reenviaPend(); } cacheSave(); softRender(); },
       function(err){ fbError = 'Firebase: ' + err.message; softRender(); });
   });
   db.ref('historial').limitToLast(200).on('value', function(s){ DB.historial = s.val() || {}; cacheSave(); softRender(); }, function(){});
   db.ref('prevlog').limitToLast(400).on('value', function(s){ DB.prevlog = s.val() || {}; cacheSave(); softRender(); }, function(){});
   db.ref('informes').limitToLast(30).on('value', function(s){ DB.informes = s.val() || {}; softRender(); }, function(){});
 }
+/* Usuarios de los técnicos: los da de alta Gerencia (Control Gerencia → Ajustes → Técnicos de Control Mantenimiento).
+     /cuentas/{usuario} = { email, uid, nombre, activo }   usuario que escribe el técnico → su cuenta de Firebase
+     /tecnicos/{uid}    = true                            cuentas que pueden trabajar aquí
+   Si Gerencia lo desactiva o le asigna un PIN nuevo, la cuenta anterior deja de estar en /tecnicos y se cierra la sesión. */
+function cuentaDeUid(cs, uid){ var k = Object.keys(cs || {}).filter(function(x){ return cs[x] && cs[x].uid === uid; })[0]; return k ? cs[k] : null; }
 function cargaPerfil(u){
-  db.ref('usuarios/' + u.uid).once('value').then(function(s){
-    perfil = s.val() || null;
+  Promise.all([db.ref('usuarios/' + u.uid).once('value'), db.ref('cuentas').once('value')]).then(function(r){
+    perfil = r[0].val() || null;
+    var c = cuentaDeUid(r[1].val(), u.uid);
+    if (c && c.nombre && (!perfil || perfil.nombre !== c.nombre)) {     // el nombre lo puso Gerencia: no se pregunta
+      perfil = { nombre: c.nombre };
+      db.ref('usuarios/' + u.uid).set({ nombre: c.nombre, email: u.email || '', creado: now() }).catch(function(){});
+    }
     if (!perfil || !perfil.nombre) { ui.sheet = { k:'nombre' }; ui.sh = { nombre:'' }; }
     render();
   }).catch(function(){ render(); });
+}
+function revisaAcceso(u){
+  Promise.all([db.ref('tecnicos').once('value'), db.ref('cuentas').once('value')]).then(function(r){
+    var t = r[0].val() || {}, cs = r[1].val();
+    if (!cs || !Object.keys(cs).length || t[u.uid] === true || !usuario || usuario.uid !== u.uid) return;   // Gerencia aún no da de alta a nadie: se permite (transición)
+    ui.lgErr = 'Tu usuario ya no está activo: Gerencia lo desactivó o te asignó un PIN nuevo. Pídele tus datos a Gerencia.';
+    auth.signOut();
+  }).catch(function(){});
+}
+/* usuario que escribe el técnico → correo de su cuenta */
+function correoDe(u){
+  if (u.indexOf('@') >= 0) return Promise.resolve(u);
+  var antes = u + '@' + DOMINIO_ACCESO;                                 // cuentas hechas a mano en la consola (antes de Gerencia)
+  if (!db || !/^[a-z0-9_-]+$/.test(u)) return Promise.resolve(antes);
+  var espera = new Promise(function(ok, ko){ setTimeout(function(){ ko({ code:'auth/network-request-failed' }); }, 8000); });
+  return Promise.race([db.ref('cuentas/' + u).once('value'), espera]).then(function(s){
+    var c = s.val();
+    if (c && c.activo === false) throw { code:'cm/desactivado' };
+    return c && c.email ? c.email : antes;
+  });
 }
 function initFB(){
   try {
     if (typeof firebase === 'undefined') throw new Error('No se pudo cargar Firebase. Abre la app una vez con internet.');
     firebase.initializeApp(FIREBASE_MANT);
     db = firebase.database();
-    db.ref('.info/connected').on('value', function(s){ online = !!s.val(); softRender(); });
+    db.ref('.info/connected').on('value', function(s){ online = !!s.val(); reenviaPend(); softRender(); });
     if (REQ_ACCESO) {
       if (!firebase.auth) throw new Error('No se pudo cargar el acceso. Abre la app una vez con internet.');
       auth = firebase.auth();
       auth.onAuthStateChanged(function(u){
         usuario = u; authListo = true;
-        if (u) { iniciaDatos(); cargaPerfil(u); } else { perfil = null; ui.sheet = null; }
+        if (u) { iniciaDatos(); cargaPerfil(u); revisaAcceso(u); } else { perfil = null; ui.sheet = null; }
         render();
       });
     } else { authListo = true; iniciaDatos(); }
@@ -248,6 +280,7 @@ function initFB(){
 function nombreTec(){ return (perfil && perfil.nombre) || (usuario && usuario.email ? usuario.email.split('@')[0] : 'Técnico'); }
 function msgAuth(e){
   var c = (e && e.code) || '';
+  if (c === 'cm/desactivado') return 'Este usuario está desactivado. Pídele tus datos a Gerencia.';
   if (/user-not-found|wrong-password|invalid-credential|invalid-email|invalid-login/.test(c)) return 'Usuario o PIN incorrecto.';
   if (/too-many/.test(c)) return 'Demasiados intentos. Espera unos minutos.';
   if (/network/.test(c)) return 'Sin internet. Revisa tu conexión.';
@@ -262,16 +295,50 @@ function loginHTML(){
     '<label class="lg-lbl" for="lg_p">PIN</label><input id="lg_p" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Tu PIN">' +
     (ui.lgErr ? '<div class="lgerr" role="alert">' + esc(ui.lgErr) + '</div>' : '') +
     '<button class="btn cta block" style="margin-top:14px" data-a="entrar"' + (ui.lgBusy ? ' disabled' : '') + '>' + (ui.lgBusy ? 'Entrando…' : 'Entrar') + '</button>' +
-    '<div class="lg-help">' + (window.VISTA_PREVIA ? 'Vista previa: escribe cualquier usuario y PIN.' : 'Si olvidaste tu PIN, pide que lo restablezcan en Firebase.') + '</div></div></div>';
+    '<div class="lg-help">' + (window.VISTA_PREVIA ? 'Vista previa: escribe cualquier usuario y PIN.' : 'Tu usuario y tu PIN te los da Gerencia. Si olvidaste tu PIN, pídele uno nuevo.') + '</div></div></div>';
 }
-function guarda(ruta, valor){
-  if (!db) { toast('Sin conexión con la base de datos'); return Promise.reject(); }
-  return db.ref(ruta).set(valor).catch(function(e){ toast('No se pudo guardar: ' + e.message); });
+/* ---------- escrituras ----------
+   Cada escritura se anota en el teléfono (cm_pend_v1) hasta que Firebase la confirma. Sin señal, Firebase la guarda en memoria y la
+   manda al volver la señal, pero si el teléfono recarga la app se perdía. Ahora, al volver a abrir la app, se reenvía lo que quedó
+   pendiente (los cambios a un reporte que el instructor ya cerró se descartan, para no crear reportes huérfanos). */
+var PEND_KEY = 'cm_pend_v1', PEND = [], PEND_VIEJAS = null, vivoRep = false;
+try { PEND = JSON.parse(localStorage.getItem(PEND_KEY) || '[]') || []; } catch(e){ PEND = []; }
+if (!Array.isArray(PEND)) PEND = [];
+PEND_VIEJAS = PEND.slice();
+function pendGuarda(){ try { localStorage.setItem(PEND_KEY, JSON.stringify(PEND)); } catch(e){} }
+function pendQuita(k){ PEND = PEND.filter(function(w){ return w.k !== k; }); pendGuarda(); }
+function falla(e, msg){ toast(msg + ': ' + ((e && e.message) || 'error')); var x = e instanceof Error ? e : new Error(msg); x.cmAvisado = true; throw x; }
+function escribe(op, ruta, valor){
+  if (!db) { toast('Sin conexión con la base de datos'); var x = new Error('sin base'); x.cmAvisado = true; return Promise.reject(x); }
+  var w = { k: now() + '-' + Math.random().toString(36).slice(2, 7), op: op, ruta: ruta, v: valor === undefined ? null : valor };
+  PEND.push(w); pendGuarda();
+  var ref = db.ref(ruta);
+  return (op === 'set' ? ref.set(w.v) : ref.update(w.v)).then(function(){ pendQuita(w.k); },
+    function(e){ pendQuita(w.k); falla(e, 'No se pudo guardar'); });
 }
-function actualiza(ruta, campos){
-  if (!db) { toast('Sin conexión con la base de datos'); return Promise.reject(); }
-  return db.ref(ruta).update(limpia(campos)).catch(function(e){ toast('No se pudo guardar: ' + e.message); });
+function guarda(ruta, valor){ return escribe('set', ruta, valor); }
+function actualiza(ruta, campos){ return escribe('update', ruta, limpia(campos)); }
+/* Aviso honesto: sin señal dice que quedó en el teléfono; el "listo" sale cuando Firebase confirma. */
+function confirma(p, ok){
+  if (!online) toast('Sin señal: quedó guardado en este teléfono y se enviará solo al volver la señal.');
+  p.then(function(){ if (ok) toast(ok); }, function(){});
+  return p;
 }
+function reenviaPend(){
+  if (!PEND_VIEJAS || !PEND_VIEJAS.length || !db || !online || !vivoRep || (REQ_ACCESO && !usuario)) return;
+  var l = PEND_VIEJAS; PEND_VIEJAS = null;
+  var viejas = {}; l.forEach(function(w){ viejas[w.k] = 1; }); PEND = PEND.filter(function(w){ return !viejas[w.k]; }); pendGuarda();
+  var n = 0;
+  l.forEach(function(w){
+    var m = /^reportes\/([^\/]+)/.exec(w.ruta || '');
+    if (m && !DB.reportes[m[1]]) return;                           // el instructor ya lo cerró: no se reenvía
+    if (m && DB.reportes[m[1]].estado === 'resuelto' && !(w.v && w.v.estado === 'resuelto')) return;   // ya lo resolvió alguien: no se regresa
+    if (w.op !== 'set' && w.op !== 'update') return;
+    n++; escribe(w.op, w.ruta, w.v).catch(function(){});
+  });
+  if (n) toast(n === 1 ? 'Se envió 1 cambio que había quedado pendiente en este teléfono.' : 'Se enviaron ' + n + ' cambios que habían quedado pendientes en este teléfono.');
+}
+window.addEventListener('unhandledrejection', function(e){ if (e.reason && e.reason.cmAvisado) e.preventDefault(); });
 function nuevoId(ruta){ return db ? db.ref(ruta).push().key : 'x' + Math.random().toString(36).slice(2, 9); }
 
 /* ---------- estado de pantalla ---------- */
@@ -363,8 +430,8 @@ function pillUrg(r){
 }
 /* Cronómetro de un reporte: corre desde que llega y se detiene al resolverse. Sirve de base para el control de tiempos. */
 function timerHTML(r){
-  var fin = r.estado === 'resuelto' ? (r.resuelto || now()) : 0;
-  return '<div class="rep-time">' + ic('reloj') + '<span>' + (fin ? 'Resuelto en' : 'Tiempo desde que llegó') + '</span><b class="timer' + (fin ? ' stop' : '') + '" data-t0="' + r.creado + '">' + dur((fin || now()) - r.creado) + '</b></div>';
+  var fin = r.estado === 'resuelto' ? (num(r.resuelto) || now()) : 0, t0 = num(r.creado);
+  return '<div class="rep-time">' + ic('reloj') + '<span>' + (fin ? 'Resuelto en' : 'Tiempo desde que llegó') + '</span><b class="timer' + (fin ? ' stop' : '') + '" data-t0="' + t0 + '">' + dur((fin || now()) - t0) + '</b></div>';
 }
 function tick(){ var n = now(); document.querySelectorAll('.timer[data-t0]:not(.stop)').forEach(function(el){ el.textContent = dur(n - (+el.getAttribute('data-t0'))); }); }
 function repCard(r, abre){
@@ -381,7 +448,7 @@ function repCard(r, abre){
     '<b class="rep-t">' + esc(e.nombre) + '</b><span class="rep-d">' + esc(r.desc) + '</span>' +
     '<small>' + esc(eqLugar(e)) + ' · ' + esc(r.prof || 'Instructor') + (r.origen === 'gerencia' && r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · llegó ' + fechaHora(r.creado) + '</small>' +
     (x.length ? '<div class="rep-x">' + x.join('') + '</div>' : '') + timerHTML(r);
-  return abre ? '<button class="rep ' + semaforo(r) + '" data-a="openRep" data-v="' + r.id + '">' + inner + '</button>'
+  return abre ? '<button class="rep ' + semaforo(r) + '" data-a="openRep" data-v="' + esc(r.id) + '">' + inner + '</button>'
               : '<div class="rep ' + semaforo(r) + '">' + inner + '</div>';
 }
 function prevCard(p, ro){
@@ -392,8 +459,8 @@ function prevCard(p, ro){
     '<b class="rep-t">' + esc(p.titulo) + '</b>' + (p.detalle ? '<span class="rep-d">' + esc(p.detalle) + '</span>' : '') +
     '<small>' + (lug ? esc(lug) + ' · ' : '') + cuando + '</small>' +
     (pp.length ? '<small>Pospuesto ' + pp.length + (pp.length === 1 ? ' vez' : ' veces') + ' · último motivo: ' + esc(pp[pp.length - 1].motivo) + '</small>' : '') +
-    (ro ? '' : '<div class="btns"><button class="btn primary" data-a="prevDone" data-v="' + p.id + '">Ya se revisó</button><button class="btn" data-a="prevPosp" data-v="' + p.id + '">Posponer</button></div>' +
-      '<button class="btn sm" data-a="prevEdit" data-v="' + p.id + '" style="align-self:flex-start;margin-top:8px">Editar</button>') + '</div>';
+    (ro ? '' : '<div class="btns"><button class="btn primary" data-a="prevDone" data-v="' + esc(p.id) + '">Ya se revisó</button><button class="btn" data-a="prevPosp" data-v="' + esc(p.id) + '">Posponer</button></div>' +
+      '<button class="btn sm" data-a="prevEdit" data-v="' + esc(p.id) + '" style="align-self:flex-start;margin-top:8px">Editar</button>') + '</div>';
 }
 
 /* ---------- vistas ---------- */
@@ -491,7 +558,7 @@ function vRecorrido(sid){
     '<div style="display:flex;align-items:flex-end"><button class="chip' + (ui.prevSolo ? ' on' : '') + '" style="width:100%;justify-content:center" data-a="prevSolo">' + (ui.prevSolo ? 'Viendo solo los rojos' : 'Ver solo los rojos') + '</button></div></div></div>' +
     (l.length ? '<div class="eqgrid" style="margin-top:12px">' + l.map(function(x){
       var e = x.e, p = x.p;
-      return '<button class="eq ' + p.c + '" data-a="prevEq" data-v="' + e.id + '"><div class="pic">' + ic('img') + (e.foto ? esc(e.foto) + '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '') + '</div>' +
+      return '<button class="eq ' + p.c + '" data-a="prevEq" data-v="' + esc(e.id) + '"><div class="pic">' + ic('img') + (e.foto ? esc(e.foto) + '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '') + '</div>' +
         '<div class="inf"><b>' + esc(e.nombre) + '</b>' + pill(p.t, p.c === 'rojo' ? 'bad' : p.c === 'amar' ? 'warn' : 'ok') + (p.sub ? '<small>' + esc(p.sub) + '</small>' : '') + '</div></button>';
     }).join('') + '</div>' : empty(eqs.length ? 'No hay equipos en rojo en este salón.' : 'Este salón todavía no tiene equipos. Dalos de alta en la pestaña Equipos.'));
 }
@@ -506,7 +573,7 @@ function vPreventivo(){
     '<div class="sub" style="margin-top:-4px">Elige el salón de hoy. Los equipos en rojo son los que necesitan atención: primero los que tienen reporte, luego los que les toca su revisión.</div>' +
     (sal.length ? '<div class="salgrid">' + sal.map(function(x){
       var r = x.r, c = r.rojo ? 'rojo' : 'verde', pct = r.total ? Math.round((r.verde + r.amar) * 100 / r.total) : 0;
-      return '<button class="salc ' + c + '" data-a="prevSalon" data-v="' + x.s.id + '"><div class="salc-h"><b>' + esc(x.s.nombre) + '</b>' + (r.rojo ? pill(r.rojo + ' en rojo', 'bad big') : pill('Al corriente', 'ok big')) + '</div>' +
+      return '<button class="salc ' + c + '" data-a="prevSalon" data-v="' + esc(x.s.id) + '"><div class="salc-h"><b>' + esc(x.s.nombre) + '</b>' + (r.rojo ? pill(r.rojo + ' en rojo', 'bad big') : pill('Al corriente', 'ok big')) + '</div>' +
         '<small>' + (r.rep ? '<b>' + plu(r.rep, 'equipo con reporte', 'equipos con reporte') + '</b> · ' : '') + r.verde + ' de ' + r.total + ' en verde</small><div class="prog"><i style="width:' + pct + '%"></i></div></button>';
     }).join('') + '</div>' : empty('Todavía no hay equipos dados de alta. Entra a Equipos para cargarlos por salón.')) +
     '<div class="h2 sm">Revisiones programadas</div><div class="btns" style="margin-top:0;margin-bottom:6px"><button class="btn primary" data-a="prevNew">' + ic('plus') + ' Agregar revisión</button></div>' +
@@ -523,7 +590,7 @@ function vEquipos(){
     (areas.length > 1 ? '<div class="chips">' + areas.map(function(a){ return '<button class="chip' + (ui.areaF === a ? ' on' : '') + '" data-a="areaF" data-v="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</div>' : '') +
     (l.length ? '<div class="eqgrid">' + l.map(function(e){
       var s = eqEstado(e.id);
-      return '<button class="eq" data-a="eqOpen" data-v="' + e.id + '"><div class="pic">' + ic('img') + (e.foto ? esc(e.foto) + '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '') + '</div>' +
+      return '<button class="eq" data-a="eqOpen" data-v="' + esc(e.id) + '"><div class="pic">' + ic('img') + (e.foto ? esc(e.foto) + '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '') + '</div>' +
         '<div class="inf"><b>' + esc(e.nombre) + '</b><small>' + esc(eqLugar(e)) + '</small>' + pill(s.t, s.c) + '</div></button>';
     }).join('') + '</div>' : empty('No hay equipos en esta lista.'));
 }
@@ -556,7 +623,7 @@ function respaldoCard(){
 /* ---------- hojas (ventana emergente, igual que en Gerencia) ---------- */
 function mHead(t){ return '<div class="sh-h"><b>' + esc(t) + '</b><button class="ibtn" data-a="close" aria-label="Cerrar">' + ic('x') + '</button></div>'; }
 function opcionesSalon(sel, vacio){
-  return (vacio ? '<option value="">' + vacio + '</option>' : '') + lista('salones').map(function(s){ return '<option value="' + s.id + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.nombre) + ' · ' + esc(s.area) + '</option>'; }).join('');
+  return (vacio ? '<option value="">' + vacio + '</option>' : '') + lista('salones').map(function(s){ return '<option value="' + esc(s.id) + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.nombre) + ' · ' + esc(s.area) + '</option>'; }).join('');
 }
 function esperaPz(r){ return arr(r.piezas).some(function(x){ return !x.llego; }); }
 function msPiezas(r, hasta){                 /* tiempo total esperando piezas (lo que sigue pendiente cuenta hasta "hasta") */
@@ -586,7 +653,7 @@ function piezaHTML(r, sh, hecho){
   if (esp) {
     return '<div class="card pieza esp" style="margin-bottom:14px"><div class="h2 sm" style="margin:0 0 6px">Esperando pieza</div>' +
       '<b>' + esc(esp.desc) + '</b><small class="mut" style="display:block">Pedida ' + fechaHora(esp.pedida) + '</small>' +
-      '<div class="rep-time" style="margin-top:8px;border:0;padding-top:0">' + ic('reloj') + '<span>Lleva esperando</span><b class="timer" data-t0="' + esp.pedida + '">' + dur(now() - esp.pedida) + '</b></div>' +
+      '<div class="rep-time" style="margin-top:8px;border:0;padding-top:0">' + ic('reloj') + '<span>Lleva esperando</span><b class="timer" data-t0="' + num(esp.pedida) + '">' + dur(now() - num(esp.pedida)) + '</b></div>' +
       '<button class="btn primary block" style="margin-top:10px" data-a="piezaLlego">Ya llegó la pieza (seguir con el trabajo)</button></div>';
   }
   return '<div class="card pieza" style="margin-bottom:14px"><div class="h2 sm" style="margin:0 0 6px">¿Hace falta una pieza?</div>' +
@@ -603,7 +670,11 @@ function sheetCal(){
     '<div class="btns"><button class="btn" data-a="close">Cancelar</button><button class="btn primary" data-a="perAplicar">Aplicar</button></div>';
 }
 function sheetRep(){
-  var raw = DB.reportes[ui.sheet.id]; if (!raw) return '';
+  var raw = DB.reportes[ui.sheet.id];
+  if (!raw) return mHead('Reporte cerrado') +
+    '<div class="vinc off"><b>El instructor ya cerró este reporte</b><span>Ya no se puede modificar' + (ui.sh && (ui.sh.diag || '').trim() ? '. Si necesitas lo que escribiste, cópialo antes de cerrar.' : '.') + '</span></div>' +
+    (ui.sh && (ui.sh.diag || '').trim() ? '<label class="f"><span>Lo que escribiste</span><textarea readonly>' + esc(ui.sh.diag) + '</textarea></label>' : '') +
+    '<button class="btn block" data-a="close">Cerrar</button>';
   var r = Object.assign({ id: ui.sheet.id }, raw), e = eqById(r.equipoId), sh = ui.sh, hecho = r.estado === 'resuelto';
   return mHead(e.nombre) +
     '<div class="rep ' + semaforo(r) + '" style="margin-bottom:14px"><div class="rep-h">' + pillEstado(r) + pillUrg(r) + '</div>' +
@@ -647,7 +718,7 @@ function sheetEq(){
     '<div class="eq" style="margin-bottom:12px"><div class="pic">' + ic('img') + esc(e.foto || '') + (e.foto ? '<img src="img/equipos/' + encodeURIComponent(e.foto) + '" alt="" onerror="this.style.display=\'none\'">' : '') + '</div></div>' +
     '<div class="sub" style="margin:0 0 6px">' + esc(eqLugar(e)) + ' · ' + esc(eqArea(e)) + '</div>' + pill(s.t, s.c + ' big') +
     invHTML(raw) +
-    '<div class="btns"><button class="btn" data-a="eqEdit" data-v="' + e.id + '">Editar equipo</button><button class="btn" data-a="eqQR" data-v="' + e.id + '">Código QR</button></div>' +
+    '<div class="btns"><button class="btn" data-a="eqEdit" data-v="' + esc(e.id) + '">Editar equipo</button><button class="btn" data-a="eqQR" data-v="' + esc(e.id) + '">Código QR</button></div>' +
     '<div class="h2 sm">Historial</div>' + (h.length ? '<div class="stack">' + h.map(function(r){
       return '<div class="rep ' + (r.cerrado ? 'verde' : semaforo(r)) + '"><div class="rep-h">' + (r.cerrado ? pill('Cerrado', 'ok big') : pillEstado(r)) + '<span class="go mut" style="font-size:12.5px">' + hace(r.creado) + '</span></div><span class="rep-d">' + esc(r.desc) + '</span>' + (r.diag ? '<small>' + esc(r.diag) + '</small>' : '') + '</div>';
     }).join('') + '</div>' : empty('Este equipo no tiene reportes.'));
@@ -675,8 +746,8 @@ function sheetQR(){
     '<div style="max-width:260px;margin:4px auto 10px;background:#fff;border-radius:14px;padding:6px">' + qrSvg(e.id) + '</div>' +
     '<div style="text-align:center"><b>' + esc(e.nombre) + '</b><div class="sub" style="margin:2px 0 8px">' + esc(eqLugar(e)) + '</div></div>' +
     '<div class="sub" style="text-align:center;margin-bottom:8px">Imprímelo y pégalo en el equipo. El instructor lo escanea desde Control Fitness y se llena solo el equipo, con su foto.</div>' +
-    '<button class="btn cta block" data-a="qrPrint" data-v="' + e.id + '">Imprimir etiqueta</button>' +
-    '<button class="btn block" style="margin-top:10px" data-a="eqOpen" data-v="' + e.id + '">Volver al equipo</button>';
+    '<button class="btn cta block" data-a="qrPrint" data-v="' + esc(e.id) + '">Imprimir etiqueta</button>' +
+    '<button class="btn block" style="margin-top:10px" data-a="eqOpen" data-v="' + esc(e.id) + '">Volver al equipo</button>';
 }
 function sheetEqForm(){
   var nuevo = !ui.sheet.id;
@@ -694,7 +765,7 @@ function sheetSalones(){
     (SALONES_FITNESS.some(function(f){ return !DB.salones[f[0]]; }) ? '<button class="btn primary block" style="margin-bottom:12px" data-a="salonesFitness">Cargar los salones de Fitness</button>' : '') +
     (ss.length ? ss.map(function(s){
       return '<div class="card" style="margin-bottom:10px"><div class="row"><div><b>' + esc(s.nombre) + '</b><small>Área ' + esc(s.area) + '</small></div></div>' +
-        '<div class="btns" style="margin-top:10px"><button class="btn sm" data-a="salEdit" data-v="' + s.id + '">Renombrar</button><button class="btn sm danger" data-a="salDel" data-v="' + s.id + '">Eliminar</button></div></div>';
+        '<div class="btns" style="margin-top:10px"><button class="btn sm" data-a="salEdit" data-v="' + esc(s.id) + '">Renombrar</button><button class="btn sm danger" data-a="salDel" data-v="' + esc(s.id) + '">Eliminar</button></div></div>';
     }).join('') : empty('Todavía no hay salones.')) +
     '<div class="h2 sm">Agregar salón</div>' +
     '<label class="f"><span>Nombre del salón o zona</span><input data-f="nombre" placeholder="Ej. Salon Spinning" value="' + esc(ui.sh.nombre) + '"></label>' +
@@ -869,7 +940,7 @@ function carrN(){
   n.textContent = (i + 1) + ' de ' + c.children.length;
 }
 function render(){
-  ui.dirty = false;
+  ui.dirty = false; if (!ui.sheet) ui.shCambio = false;
   if (REQ_ACCESO && !usuario) {            /* carátula de acceso */
     document.getElementById('app').innerHTML = loginHTML();
     var m0 = document.getElementById('modal'); m0.hidden = true; m0.innerHTML = ''; document.body.style.overflow = '';
@@ -877,6 +948,7 @@ function render(){
   }
   if (RESTAURA && DB.reportes && DB.reportes[RESTAURA.id] && !ui.sheet) {
     ui.tab = 'reportes'; ui.sheet = { k:'rep', id: RESTAURA.id }; ui.sh = Object.assign({ diag:'', compra:false, cambio:false, costo:'' }, RESTAURA.sh || {});
+    ui.shCambio = (ui.sh.diag || '') !== (DB.reportes[RESTAURA.id].diag || '');
     if (FOT[RESTAURA.id] === undefined) cargaFotos(RESTAURA.id);
   }
   if (ready) RESTAURA = null;
@@ -901,6 +973,7 @@ function render(){
   if (sy) window.scrollTo(0, sy);
   guardaSheet();
 }
+function repCerrado(){ toast('El instructor ya cerró este reporte; no se guardó.'); render(); }
 function escribiendo(){ var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
 function softRender(){ if (escribiendo() || (ui.sheet && ui.sheet.k === 'infdoc')) { ui.dirty = true; return; } render(); }
 var toastT;
@@ -915,7 +988,7 @@ var A = {
     if (!u || !p) { ui.lgErr = 'Escribe tu usuario y tu PIN.'; render(); return; }
     if (!auth) { ui.lgErr = 'El acceso no está disponible. ' + (fbError || ''); render(); return; }
     ui.lgBusy = true; ui.lgErr = ''; render();
-    auth.signInWithEmailAndPassword(u.indexOf('@') >= 0 ? u : u + '@' + DOMINIO_ACCESO, p)
+    correoDe(u).then(function(correo){ return auth.signInWithEmailAndPassword(correo, p); })
       .then(function(){ ui.lgBusy = false; ui.lgErr = ''; })
       .catch(function(e){ ui.lgBusy = false; ui.lgErr = msgAuth(e); render(); });
   },
@@ -929,7 +1002,7 @@ var A = {
   camAbre:function(v){ camAbre(v); },
   respaldo:function(){ respaldoManual(false); },
   respaldoFotos:function(){ respaldoManual(true); },
-  zoom:function(v){ var f = FOT[ui.sheet && ui.sheet.id] || {}; if (f[v]) { ui.zoom = f[v]; render(); } },
+  zoom:function(v){ var f = FOT[ui.sheet && ui.sheet.id] || {}, x = fotoOk(f[v]); if (x) { ui.zoom = x; render(); } },
   zoomCierra:function(){ ui.zoom = null; render(); },
   tab:function(v){ ui.tab = v; ui.sheet = null; ui.areaF = 'Todos'; render(); top0(); },
   estado:function(v){ ui.estado = ui.estado === v ? null : v; ui.reset = true; render(); },
@@ -949,17 +1022,25 @@ var A = {
   urg:function(v){ ui.urg = ui.urg === v ? null : v; ui.reset = true; render(); },
   carr:function(v){ carToca(); var c = document.querySelector('.carr'); if (c) c.scrollBy({ left: (+v) * c.clientWidth * 0.9, behavior:'smooth' }); },
   areaF:function(v){ ui.areaF = v; render(); },
-  close:function(){ ui.sheet = null; render(); },
+  close:function(){
+    var k = ui.sheet && ui.sheet.k, cerrado = k === 'rep' && !DB.reportes[ui.sheet.id];
+    if (ui.shCambio && !cerrado && k !== 'cal' && !confirm('Tienes cambios sin guardar. ¿Cerrar y perder lo que escribiste?')) return;
+    ui.sheet = null; render();
+  },
   /* reportes: al abrir uno nuevo pasa solo a "en proceso" (amarillo) */
   openRep:function(v){
     var r = DB.reportes[v]; if (!r) return;
-    ui.sheet = { k:'rep', id:v }; ui.sh = { diag: r.diag || '', compra: !!r.compra, cambio: !!r.cambio, costo: r.costo || '' };
+    ui.sheet = { k:'rep', id:v }; ui.shCambio = false; ui.sh = { diag: r.diag || '', compra: !!r.compra, cambio: !!r.cambio, costo: r.costo || '' };
     if (r.estado === 'nuevo') actualiza('reportes/' + v, { estado:'atencion', visto: now(), tecnico: nombreTec(), tecnicoId: usuario ? usuario.uid : undefined });
     if (FOT[v] === undefined) cargaFotos(v);
     render();
   },
-  saveRep:function(){ var id = ui.sheet.id, s = ui.sh; ui.sheet = null; actualiza('reportes/' + id, { diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }); render(); toast('Nota guardada'); },
+  saveRep:function(){
+    var id = ui.sheet.id, s = ui.sh; if (!DB.reportes[id]) return repCerrado();
+    ui.sheet = null; confirma(actualiza('reportes/' + id, { diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }), 'Nota guardada'); render();
+  },
   resolveRep:function(){
+    if (!DB.reportes[ui.sheet.id]) return repCerrado();
     if (esperaPz(DB.reportes[ui.sheet.id] || {})) return toast('Todavía se espera una pieza. Marca primero que ya llegó.');
     if (!ui.sh.diag.trim()) return toast('Anota qué encontraste y qué hiciste');
     var fo = FOT[ui.sheet.id] || {};
@@ -967,35 +1048,36 @@ var A = {
       if (FOTO_OBLIG) return toast('Toma la foto del después antes de marcarlo resuelto');
       if (!confirm('No tomaste la foto del después. ¿Marcarlo como resuelto sin foto?')) return;
     }
-    var id = ui.sheet.id, s = ui.sh, raw = DB.reportes[id] || {}, t = now(), cre = raw.creado || t, vis = raw.visto || t; ui.sheet = null;
+    if (!DB.reportes[ui.sheet.id]) return repCerrado();                // pudo cerrarse mientras estaba abierta la pregunta
+    var id = ui.sheet.id, s = ui.sh, raw = DB.reportes[id], t = now(), cre = num(raw.creado) || t, vis = num(raw.visto) || t; ui.sheet = null;
     /* se guardan las fechas y los tiempos (ms) para el control de tiempos y los reportes futuros */
     var pz = arr(raw.piezas).map(function(x){ return x.llego ? x : Object.assign({}, x, { llego:t }); }), mp = msPiezas({ piezas:pz }, t);
-    actualiza('reportes/' + id, { estado:'resuelto', resuelto:t, visto:vis, msRespuesta:vis - cre, msAtencion:t - vis, msTotal:t - cre, msPieza: pz.length ? mp : undefined, msTrabajo: pz.length ? Math.max(0, t - vis - mp) : undefined,
-      piezas: pz.length ? pz : undefined, esperaPieza:false, resueltoPor:nombreTec(), diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }); render();
-    toast('Resuelto. Se avisó al instructor y a gerencia.');
+    confirma(actualiza('reportes/' + id, { estado:'resuelto', resuelto:t, visto:vis, msRespuesta:vis - cre, msAtencion:t - vis, msTotal:t - cre, msPieza: pz.length ? mp : undefined, msTrabajo: pz.length ? Math.max(0, t - vis - mp) : undefined,
+      piezas: pz.length ? pz : undefined, esperaPieza:false, resueltoPor:nombreTec(), diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }),
+      'Resuelto. Se avisó al instructor y a gerencia.'); render();
   },
   piezaPide:function(){
-    var id = ui.sheet.id, r = DB.reportes[id], d = (ui.sh.pieza || '').trim(); if (!r) return;
+    var id = ui.sheet.id, r = DB.reportes[id], d = (ui.sh.pieza || '').trim(); if (!r) return repCerrado();
     if (!d) return toast('Escribe qué pieza o material se necesita');
     var pz = arr(r.piezas).concat([{ desc:d, pedida:now(), por:nombreTec() }]);
-    ui.sh.pieza = ''; ui.sh.compra = true;
-    actualiza('reportes/' + id, { piezas:pz, esperaPieza:true, compra:true, diag:ui.sh.diag, cambio:ui.sh.cambio, costo:ui.sh.costo }); render();
-    toast('Pieza pedida. Quedó marcada la hora.');
+    ui.sh.pieza = ''; ui.sh.compra = true; ui.shCambio = false;
+    confirma(actualiza('reportes/' + id, { piezas:pz, esperaPieza:true, compra:true, diag:ui.sh.diag, cambio:ui.sh.cambio, costo:ui.sh.costo }), 'Pieza pedida. Quedó marcada la hora.'); render();
   },
   piezaLlego:function(){
-    var id = ui.sheet.id, r = DB.reportes[id]; if (!r) return;
+    var id = ui.sheet.id, r = DB.reportes[id]; if (!r) return repCerrado();
     var t = now(), pz = arr(r.piezas).map(function(x){ return x.llego ? x : Object.assign({}, x, { llego:t }); });
-    actualiza('reportes/' + id, { piezas:pz, esperaPieza:false }); render(); toast('Listo. Se registró la hora en que llegó la pieza.');
+    confirma(actualiza('reportes/' + id, { piezas:pz, esperaPieza:false }), 'Listo. Se registró la hora en que llegó la pieza.'); render();
   },
   /* recorrido preventivo por salón */
   prevSalon:function(v){ ui.prevSalon = v || null; ui.prevSolo = false; ui.reset = true; render(); top0(); },
   prevSolo:function(){ ui.prevSolo = !ui.prevSolo; render(); },
-  prevEq:function(v){ ui.sheet = { k:'prevEq', id:v }; ui.sh = { nota:'', posp:'' }; render(); },
+  prevEq:function(v){ ui.sheet = { k:'prevEq', id:v }; ui.shCambio = false; ui.sh = { nota:'', posp:'' }; render(); },
   prevEqHecho:function(){
     var id = ui.sheet.id, e = DB.equipos[id]; if (!e) return; var t = now(), nota = (ui.sh.nota || '').trim();
-    actualiza('equipos/' + id, { prevUlt:t, prevPor:nombreTec(), prevPosp:null });
-    guarda('prevlog/' + nuevoId('prevlog'), limpia({ equipoId:id, salonId:e.salonId, t:t, por:nombreTec(), nota:nota || undefined }));
-    ui.sheet = null; render(); toast('Revisión guardada. Próxima: en ' + plu(prevFreqSalon(e.salonId), 'día', 'días'));
+    confirma(Promise.all([actualiza('equipos/' + id, { prevUlt:t, prevPor:nombreTec(), prevPosp:null }),
+      guarda('prevlog/' + nuevoId('prevlog'), limpia({ equipoId:id, salonId:e.salonId, t:t, por:nombreTec(), nota:nota || undefined }))]),
+      'Revisión guardada. Próxima: en ' + plu(prevFreqSalon(e.salonId), 'día', 'días'));
+    ui.sheet = null; render();
   },
   prevEqPosp:function(){
     var id = ui.sheet.id, f = ui.sh.posp; if (!f) return toast('Elige hasta qué fecha se pospone');
@@ -1037,9 +1119,10 @@ var A = {
   eqSave:function(){
     var s = ui.sh; if (!s.nombre.trim()) return toast('Escribe el nombre del equipo');
     if (!s.salonId) return toast('Elige el salón del equipo');
-    var id = ui.sheet.id || nuevoId('equipos');
-    guarda('equipos/' + id, { nombre:s.nombre.trim(), salonId:s.salonId, foto:s.foto.trim() });
-    ui.sheet = null; render(); toast('Equipo guardado');
+    var id = ui.sheet.id || nuevoId('equipos'), campos = { nombre:s.nombre.trim(), salonId:s.salonId, foto:s.foto.trim() };
+    /* al editar se actualizan solo estos campos: así no se borran el inventario, la marca ni la revisión preventiva */
+    confirma(DB.equipos[id] ? actualiza('equipos/' + id, campos) : guarda('equipos/' + id, campos), 'Equipo guardado');
+    ui.sheet = null; render();
   },
   eqDel:function(){
     var id = ui.sheet.id; if (abiertos().some(function(r){ return r.equipoId === id; })) return toast('Tiene reportes abiertos. Ciérralos antes de eliminarlo.');
@@ -1066,7 +1149,7 @@ var A = {
     var s = ui.sh; if (!s.nombre.trim()) return toast('Escribe el nombre del salón');
     if (!s.area.trim()) return toast('Escribe el área del salón');
     guarda('salones/' + nuevoId('salones'), { nombre:s.nombre.trim(), area:s.area.trim() });
-    ui.sh = { nombre:'', area:'' }; toast('Salón agregado');
+    ui.sh = { nombre:'', area:'' }; ui.shCambio = false; render(); toast('Salón agregado');
   },
   salEdit:function(v){
     var s = DB.salones[v]; if (!s) return;
@@ -1129,7 +1212,7 @@ document.addEventListener('change', function(e){
 });
 document.addEventListener('input', function(e){
   var t = e.target, f = t.getAttribute && t.getAttribute('data-f');
-  if (f && ui.sh) { ui.sh[f] = t.type === 'checkbox' ? t.checked : t.value; guardaSheet(); }
+  if (f && ui.sh) { ui.sh[f] = t.type === 'checkbox' ? t.checked : t.value; if (ui.sheet) ui.shCambio = true; guardaSheet(); }
 });
 document.addEventListener('focusout', function(){ setTimeout(function(){ if (ui.dirty && !escribiendo()) render(); }, 150); });
 document.addEventListener('error', function(e){ var t = e.target; if (t && t.tagName === 'IMG' && t.hasAttribute('data-fallback')) { t.style.display = 'none'; if (t.parentNode) t.parentNode.classList.add('nofoto'); } }, true);

@@ -1,8 +1,89 @@
 REGLAS DE FIREBASE (Realtime Database -> Reglas)
 ================================================
-Pégalas completas y pulsa Publicar. Hazlo DESPUÉS de comprobar que ya puedes entrar a la app con tu usuario y PIN
-(si las publicas antes, el técnico no podría editar el catálogo).
+Versión 17. Los usuarios de los técnicos los da de alta Gerencia, desde Control Gerencia (Ajustes -> "Técnicos de Control
+Mantenimiento"): les asigna usuario y PIN y se los entrega. Haz los pasos EN ESTE ORDEN.
 
+1) Cuenta de Gerencia en Control Mantenimiento (una sola vez):
+   Firebase -> proyecto registro-mantenimiento-9854c -> Authentication -> Usuarios -> Agregar usuario:
+       Correo:      gerencia@mantenimiento.club
+       Contraseña:  la contraseña de Gerencia de Control Gerencia, exactamente igual.
+   Hazlo YA, antes de subir nada: así nadie más puede apartar ese correo. Si después Gerencia cambia su contraseña en
+   Control Gerencia (Ajustes -> Contraseña de Gerencia), la app la cambia también aquí.
+
+2) Deja ACTIVADA la creación de cuentas: Authentication -> Configuración -> Acciones de usuario -> "Habilitar creación
+   (registro)" debe estar con palomita. Control Gerencia la necesita para crear las cuentas de los técnicos.
+   (Que alguien se cree una cuenta no le da ningún permiso: solo pueden trabajar las cuentas que Gerencia dio de alta.)
+
+3) Sube Control Gerencia (parche 24) y Control Mantenimiento (versión 17).
+4) Pega las reglas completas y pulsa Publicar:
+
+{
+  "rules": {
+    ".read": true,
+    "tecnicos": {
+      ".write": "auth != null && auth.token.email === 'gerencia@mantenimiento.club'",
+      "$uid": { ".validate": "newData.val() === true" }
+    },
+    "cuentas": {
+      "$usuario": {
+        ".write": "auth != null && auth.token.email === 'gerencia@mantenimiento.club'",
+        ".validate": "$usuario.length <= 30 && $usuario.matches(/^[a-z0-9][a-z0-9_-]+$/) && newData.hasChildren(['email', 'uid', 'nombre'])"
+      }
+    },
+    "reportes": {
+      ".indexOn": ["profId", "equipoId"],
+      "$id": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['creado', 'estado']) && $id.length <= 40 && $id.matches(/^[A-Za-z0-9_-]+$/)",
+        "creado": { ".validate": "newData.isNumber()" },
+        "estado": { ".validate": "newData.isString() && newData.val().matches(/^(nuevo|atencion|resuelto)$/)" },
+        "urg": { ".validate": "newData.isString() && newData.val().matches(/^(normal|urgente|fuera)$/)" },
+        "visto": { ".validate": "newData.isNumber()" },
+        "resuelto": { ".validate": "newData.isNumber()" },
+        "desc": { ".validate": "newData.isString() && newData.val().length <= 10000" },
+        "diag": { ".validate": "newData.isString() && newData.val().length <= 4000" }
+      }
+    },
+    "historial": {
+      "$id": {
+        ".write": true,
+        ".validate": "newData.hasChild('creado') && $id.length <= 40 && $id.matches(/^[A-Za-z0-9_-]+$/)",
+        "creado": { ".validate": "newData.isNumber()" }
+      }
+    },
+    "salones": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "equipos": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "preventivo": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "archivo": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "prevlog": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "informes": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "fotos": { ".write": "auth != null && root.child('tecnicos').child(auth.uid).val() === true" },
+    "usuarios": { "$uid": { ".write": "auth != null && auth.uid === $uid" } }
+  }
+}
+
+5) En seguida, en Control Gerencia (entrando como Gerencia, con internet): Ajustes -> "Técnicos de Control Mantenimiento" ->
+   "+ Técnico". Para el técnico de hoy usa el usuario "tecnico" (así no tiene que aprender otro), su nombre y un PIN nuevo.
+   Entrégale el usuario y el PIN. Si tenía la app abierta con la cuenta anterior, la app le cierra la sesión y entra con los
+   datos nuevos. Mientras no des de alta a nadie, ningún técnico puede editar el catálogo, el preventivo ni las fotos.
+
+Qué hacen:
+- Leer: cualquiera puede leer (Control Fitness, Control Gerencia y el respaldo automático leen sin iniciar sesión).
+- reportes e historial: los instructores los crean y los quitan desde Control Fitness, sin cuenta aquí. Ahora solo se puede
+  escribir un reporte a la vez (ya no se puede borrar o reemplazar /reportes completo de un golpe) y cada reporte debe traer
+  "creado" (número, ms) y "estado" (nuevo, atencion o resuelto); urgencia, fechas y textos se revisan. La clave del reporte
+  solo puede tener letras, números, "-" y "_" (las que crea Firebase con push()). Borrar un reporte sigue permitido.
+  El índice por profId permite que cada instructor consulte solo los suyos; el de equipoId, ver si un equipo ya tiene un reporte.
+- Catálogo (salones, equipos), preventivo, archivo, bitácora, informes y fotos: solo los técnicos que están en /tecnicos.
+- tecnicos y cuentas: solo Gerencia (gerencia@mantenimiento.club). /cuentas/{usuario} dice qué cuenta usa cada usuario;
+  /tecnicos/{uid} dice qué cuentas pueden trabajar. Al desactivar a un técnico o darle un PIN nuevo, su cuenta anterior sale
+  de /tecnicos y ya no puede escribir nada.
+- usuarios: cada técnico escribe solo su propio nombre.
+
+Si después de publicarlas Control Fitness o Control Gerencia muestran "permission denied" al mandar o quitar un reporte, es
+que mandan algún campo con otro formato: vuelve a publicar la versión anterior (abajo) y avisa para ajustarlas.
+
+Versión anterior (15), por si hay que regresar:
 {
   "rules": {
     ".read": true,
@@ -18,11 +99,3 @@ Pégalas completas y pulsa Publicar. Hazlo DESPUÉS de comprobar que ya puedes e
     "usuarios": { "$uid": { ".write": "auth != null && auth.uid === $uid" } }
   }
 }
-
-Qué hacen:
-- Leer: cualquiera puede leer (Control Fitness y Control Gerencia leen sin iniciar sesión).
-- reportes e historial: los instructores los crean y los quitan desde Control Fitness, sin cuenta aquí.
-  El índice por profId permite que cada instructor consulte solo los suyos; el de equipoId, ver si un equipo ya tiene un reporte.
-- informes: los reportes que mantenimiento envía a Control Gerencia; solo se escriben con sesión iniciada (Gerencia solo los lee).
-- archivo: reportes resueltos hace más de un mes (la app los mueve aquí, no se borran). prevlog: bitácora de las revisiones preventivas por equipo.
-- Catálogo (salones, equipos), preventivo, fotos y usuarios: solo se escriben con sesión iniciada con usuario y PIN.
