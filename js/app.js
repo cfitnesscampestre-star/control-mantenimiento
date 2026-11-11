@@ -174,7 +174,7 @@ function fotosHTML(r){
 /* ---------- archivo: lo resuelto hace más de un mes sale de la vista (pero se conserva) ----------
    Un reporte resuelto hace más de ARCHIVO_DIAS días se mueve de /reportes o /historial a /archivo. No se borra: sigue en la base y en el
    respaldo automático. Las pantallas de periodos largos (3 meses, 12 meses, Todo, fechas) lo cargan solo cuando hace falta. */
-var ARCHIVO_DIAS = 30, ARCH_KEY = 'cm_archivado_v1', archCargando = false;
+var ARCHIVO_DIAS = 30, ARCH_KEY = 'cm_archivado_v1', archCargando = false, archivando = false;
 function cargaArchivo(){
   if (!db || DB.archivoListo || archCargando) return; archCargando = true;
   db.ref('archivo').once('value').then(function(s){ DB.archivo = s.val() || {}; DB.archivoListo = true; archCargando = false; softRender(); }).catch(function(){ archCargando = false; });
@@ -184,20 +184,25 @@ function archivaViejos(){
   if (!db || !usuario || !ready) return;
   var ult = 0; try { ult = +localStorage.getItem(ARCH_KEY) || 0; } catch(e){}
   if (now() - ult < 6 * 36e5) return;                      // una vez cada 6 horas por teléfono
-  var corte = now() - ARCHIVO_DIAS * DAY, up = {}, n = 0;
-  var revisa = function(origen){
-    lista(origen).forEach(function(r){
-      if (r.estado !== 'resuelto' || n >= 150) return;
-      var cuando = r.resuelto || r.cerrado || 0; if (!cuando || cuando > corte) return;
-      var copia = Object.assign({}, r); delete copia.id; copia.archivado = now(); copia.de = origen;
-      up['archivo/' + r.id] = copia; up[origen + '/' + r.id] = null; n++;
-    });
+  if (archivando) return; archivando = true;
+  var corte = now() - ARCHIVO_DIAS * DAY, up = {}, n = 0, MAX = 150;
+  var toma = function(origen, id, r){
+    if (!r || r.estado !== 'resuelto' || n >= MAX || up['archivo/' + id]) return;
+    var cuando = r.resuelto || r.cerrado || 0; if (!cuando || cuando > corte) return;
+    var copia = Object.assign({}, r); delete copia.id; copia.archivado = now(); copia.de = origen;
+    up['archivo/' + id] = copia; up[origen + '/' + id] = null; n++;
   };
-  revisa('reportes'); revisa('historial');
-  try { localStorage.setItem(ARCH_KEY, String(now())); } catch(e){}
-  if (!n) return;
-  db.ref().update(up).then(function(){ toast(plu(n, 'reporte resuelto hace más de un mes pasó', 'reportes resueltos hace más de un mes pasaron') + ' al archivo (no se borró).'); })
-    .catch(function(e){ console.warn('Archivo: no se pudo mover (¿ya publicaste las reglas nuevas de Firebase?)', e && e.message); });
+  lista('reportes').forEach(function(r){ toma('reportes', r.id, r); });
+  /* el historial que tiene la app son los últimos 200; los más viejos se piden aparte (cerrados antes del corte) */
+  db.ref('historial').orderByChild('cerrado').endAt(corte).limitToFirst(MAX).once('value')
+    .then(function(s){ var h = s.val() || {}; Object.keys(h).forEach(function(id){ toma('historial', id, h[id]); }); },
+          function(){ lista('historial').forEach(function(r){ toma('historial', r.id, r); }); })
+    .then(function(){
+      archivando = false;
+      if (n < MAX) { try { localStorage.setItem(ARCH_KEY, String(now())); } catch(e){} }   // si quedaron más, sigue al siguiente minuto
+      if (!n) return;
+      return db.ref().update(up).then(function(){ toast(plu(n, 'reporte resuelto hace más de un mes pasó', 'reportes resueltos hace más de un mes pasaron') + ' al archivo (no se borró).'); })
+    }).catch(function(e){ archivando = false; console.warn('Archivo: no se pudo mover', e && e.message); });
 }
 function descargaJSON(nombre, obj){
   var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(obj)], { type:'application/json' })); a.download = nombre;
@@ -641,6 +646,11 @@ function mHead(t){ return '<div class="sh-h"><b>' + esc(t) + '</b><button class=
 function opcionesSalon(sel, vacio){
   return (vacio ? '<option value="">' + vacio + '</option>' : '') + lista('salones').map(function(s){ return '<option value="' + esc(s.id) + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.nombre) + ' · ' + esc(s.area) + '</option>'; }).join('');
 }
+/* piezas de un reporte con su clave: [[clave, pieza], ...]. Antes eran una lista que se reescribía completa; ahora cada pieza
+   nueva se agrega con su propia clave (push) y "llegó" se marca solo en esa pieza, así dos técnicos no se borran lo que hizo el otro.
+   arr() lee igual las dos formas. */
+function pzEntradas(r){ var p = r && r.piezas; return p ? Object.keys(p).map(function(k){ return [k, p[k]]; }).filter(function(e){ return e[1]; }) : []; }
+function pzLlegaron(r, t){ var o = {}; pzEntradas(r).forEach(function(e){ if (!e[1].llego) o['piezas/' + e[0] + '/llego'] = t; }); return o; }
 function esperaPz(r){ return arr(r.piezas).some(function(x){ return !x.llego; }); }
 function msPiezas(r, hasta){                 /* tiempo total esperando piezas (lo que sigue pendiente cuenta hasta "hasta") */
   return arr(r.piezas).reduce(function(n, x){ return n + Math.max(0, (x.llego || hasta) - x.pedida); }, 0);
@@ -999,9 +1009,10 @@ function render(){
     EQ_LINK = null;
   }
   var t = ui.tab, body = t === 'reportes' ? vReportes() : t === 'preventivo' ? vPreventivo() : t === 'equipos' ? vEquipos() : vGerencia();
+  var verBanner = ui.nuevaVersion ? '<div class="vinc"><b>Hay una versión nueva de la app</b><span>Guarda lo que estés escribiendo y toca Recargar.</span><div class="btns" style="margin:8px 0 0"><button class="btn primary" data-a="recargar">Recargar</button></div></div>' : '';
   var errBanner = fbError ? '<div class="vinc off"><b>No se pudo conectar con la base de datos</b><span>' + esc(fbError) + '</span></div>'
     : !online ? '<div class="vinc off"><b>Sin internet</b><span>Los cambios se envían al volver la señal. No cierres la app hasta entonces.</span></div>' : '';
-  document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + errBanner + body + '</main></div>' + bottomnav() + '</div>';
+  document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + verBanner + errBanner + body + '</main></div>' + bottomnav() + '</div>';
   var m = document.getElementById('modal'), k = ui.sheet && ui.sheet.k, html = '';
   if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'prevEq' ? sheetPrevEq() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : k === 'nuevo' ? sheetNuevo() : sheetPrevForm();
   if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
@@ -1013,6 +1024,8 @@ function render(){
   guardaSheet();
 }
 function repCerrado(){ toast('El instructor ya cerró este reporte; no se guardó.'); render(); }
+/* Hay versión nueva de la app (index.html avisa cuando el service worker nuevo toma el control) */
+window.avisaVersion = function(){ ui.nuevaVersion = true; softRender(); };
 function escribiendo(){ var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); }
 function softRender(){ if (escribiendo() || (ui.sheet && ui.sheet.k === 'infdoc')) { ui.dirty = true; return; } render(); }
 var toastT;
@@ -1031,7 +1044,12 @@ var A = {
       .then(function(){ ui.lgBusy = false; ui.lgErr = ''; })
       .catch(function(e){ ui.lgBusy = false; ui.lgErr = msgAuth(e); render(); });
   },
-  salir:function(){ if (!confirm('¿Cerrar sesión?')) return; ui.sheet = null; ui.zoom = null; if (auth) auth.signOut(); },
+  salir:function(){
+    if (!confirm(PEND.length ? '¿Cerrar sesión? Hay ' + plu(PEND.length, 'cambio', 'cambios') + ' sin enviar: se enviarán cuando alguien vuelva a entrar en este teléfono con internet.' : '¿Cerrar sesión?')) return;
+    ui.sheet = null; ui.zoom = null;
+    try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem(SHEET_KEY); } catch(e){}   // la copia de los datos no se queda en el teléfono
+    if (auth) auth.signOut();
+  },
   guardaNombre:function(){
     var n = (ui.sh.nombre || '').trim(); if (!n) return toast('Escribe tu nombre');
     if (!usuario) return;
@@ -1039,6 +1057,10 @@ var A = {
     perfil = { nombre:n }; ui.sheet = null; render();
   },
   camAbre:function(v){ camAbre(v); },
+  recargar:function(){
+    if (ui.shCambio && !confirm('Tienes cambios sin guardar en la ventana abierta. ¿Recargar de todos modos?')) return;
+    location.reload();
+  },
   respaldo:function(){ respaldoManual(false); },
   respaldoFotos:function(){ respaldoManual(true); },
   zoom:function(v){ var f = FOT[ui.sheet && ui.sheet.id] || {}, x = fotoOk(f[v]); if (x) { ui.zoom = x; render(); } },
@@ -1070,7 +1092,14 @@ var A = {
   openRep:function(v){
     var r = DB.reportes[v]; if (!r) return;
     ui.sheet = { k:'rep', id:v }; ui.shCambio = false; ui.sh = { diag: r.diag || '', compra: !!r.compra, cambio: !!r.cambio, costo: r.costo || '' };
-    if (r.estado === 'nuevo') actualiza('reportes/' + v, { estado:'atencion', visto: now(), tecnico: nombreTec(), tecnicoId: usuario ? usuario.uid : undefined });
+    if (r.estado === 'nuevo' && db) {
+      var t0 = now(), yo = nombreTec(), uid = usuario ? usuario.uid : null;
+      db.ref('reportes/' + v).transaction(function(cur){                    // solo si nadie lo ha abierto todavía
+        if (cur === null) return null;                                       // aún sin el dato local: Firebase reintenta con el del servidor
+        if (cur.estado !== 'nuevo') return;                                  // otro técnico ya lo abrió: no se toca
+        cur.estado = 'atencion'; cur.visto = t0; cur.tecnico = yo; if (uid) cur.tecnicoId = uid; return cur;
+      }).catch(function(){});
+    }
     if (FOT[v] === undefined) cargaFotos(v);
     render();
   },
@@ -1091,21 +1120,21 @@ var A = {
     var id = ui.sheet.id, s = ui.sh, raw = DB.reportes[id], t = now(), cre = num(raw.creado) || t, vis = num(raw.visto) || t; ui.sheet = null;
     /* se guardan las fechas y los tiempos (ms) para el control de tiempos y los reportes futuros */
     var pz = arr(raw.piezas).map(function(x){ return x.llego ? x : Object.assign({}, x, { llego:t }); }), mp = msPiezas({ piezas:pz }, t);
-    confirma(actualiza('reportes/' + id, { estado:'resuelto', resuelto:t, visto:vis, msRespuesta:vis - cre, msAtencion:t - vis, msTotal:t - cre, msPieza: pz.length ? mp : undefined, msTrabajo: pz.length ? Math.max(0, t - vis - mp) : undefined,
-      piezas: pz.length ? pz : undefined, esperaPieza:false, resueltoPor:nombreTec(), diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo }),
+    confirma(actualiza('reportes/' + id, Object.assign(pzLlegaron(raw, t), { estado:'resuelto', resuelto:t, visto:vis, msRespuesta:vis - cre, msAtencion:t - vis, msTotal:t - cre, msPieza: pz.length ? mp : undefined, msTrabajo: pz.length ? Math.max(0, t - vis - mp) : undefined,
+      esperaPieza:false, resueltoPor:nombreTec(), diag:s.diag, compra:s.compra, cambio:s.cambio, costo:s.costo })),
       'Resuelto. Se avisó al instructor y a gerencia.'); render();
   },
   piezaPide:function(){
     var id = ui.sheet.id, r = DB.reportes[id], d = (ui.sh.pieza || '').trim(); if (!r) return repCerrado();
     if (!d) return toast('Escribe qué pieza o material se necesita');
-    var pz = arr(r.piezas).concat([{ desc:d, pedida:now(), por:nombreTec() }]);
+    var campos = { esperaPieza:true, compra:true, diag:ui.sh.diag, cambio:ui.sh.cambio, costo:ui.sh.costo };
+    campos['piezas/' + nuevoId('reportes/' + id + '/piezas')] = { desc:d, pedida:now(), por:nombreTec() };
     ui.sh.pieza = ''; ui.sh.compra = true; ui.shCambio = false;
-    confirma(actualiza('reportes/' + id, { piezas:pz, esperaPieza:true, compra:true, diag:ui.sh.diag, cambio:ui.sh.cambio, costo:ui.sh.costo }), 'Pieza pedida. Quedó marcada la hora.'); render();
+    confirma(actualiza('reportes/' + id, campos), 'Pieza pedida. Quedó marcada la hora.'); render();
   },
   piezaLlego:function(){
     var id = ui.sheet.id, r = DB.reportes[id]; if (!r) return repCerrado();
-    var t = now(), pz = arr(r.piezas).map(function(x){ return x.llego ? x : Object.assign({}, x, { llego:t }); });
-    confirma(actualiza('reportes/' + id, { piezas:pz, esperaPieza:false }), 'Listo. Se registró la hora en que llegó la pieza.'); render();
+    confirma(actualiza('reportes/' + id, Object.assign(pzLlegaron(r, now()), { esperaPieza:false })), 'Listo. Se registró la hora en que llegó la pieza.'); render();
   },
   /* reportes que levanta el técnico (o sin equipo del catálogo) */
   nuevoRep:function(){ ui.sheet = { k:'nuevo' }; ui.shCambio = false; ui.sh = { salonId:'', lugarTxt:'', equipoId:'', equipoTxt:'', desc:'', urg:'normal' }; render(); },
@@ -1149,14 +1178,19 @@ var A = {
     var d = new Date(f + 'T00:00:00').getTime(); ui.sheet = null; actualiza('equipos/' + id, { prevPosp:d }); render(); toast('Pospuesto al ' + fechaTxt(d));
   },
   /* preventivo */
-  prevDone:function(v){ var p = DB.preventivo[v]; if (!p) return; var h = arr(p.hist).concat([now()]), pr = sod(now()) + p.freq * DAY; actualiza('preventivo/' + v, { hist:h, proxima:pr }); toast('Revisado. Próxima vez: ' + fechaTxt(pr)); },
+  prevDone:function(v){
+    var p = DB.preventivo[v]; if (!p) return; var pr = sod(now()) + p.freq * DAY, c = { proxima:pr };
+    c['hist/' + nuevoId('preventivo/' + v + '/hist')] = now();               // se agrega a la bitácora, no se reescribe
+    confirma(actualiza('preventivo/' + v, c), 'Revisado. Próxima vez: ' + fechaTxt(pr));
+  },
   prevPosp:function(v){ ui.sheet = { k:'posp', id:v }; ui.sh = { motivo:'Evento del club', fecha: fechaInput(sod(now()) + 3 * DAY) }; render(); },
   motivo:function(v){ ui.sh.motivo = v; render(); },
   prevPospSave:function(){
     var id = ui.sheet.id, p = DB.preventivo[id], f = ui.sh.fecha; if (!p) return;
     if (!f) return toast('Elige la nueva fecha');
-    var d = new Date(f + 'T00:00:00').getTime(), pp = arr(p.posp).concat([{ motivo: ui.sh.motivo, de: p.proxima, a: d }]);
-    ui.sheet = null; actualiza('preventivo/' + id, { posp:pp, proxima:d }); render(); toast('Pospuesto al ' + fechaTxt(d));
+    var d = new Date(f + 'T00:00:00').getTime(), c = { proxima:d };
+    c['posp/' + nuevoId('preventivo/' + id + '/posp')] = { motivo: ui.sh.motivo, de: p.proxima, a: d };
+    ui.sheet = null; confirma(actualiza('preventivo/' + id, c), 'Pospuesto al ' + fechaTxt(d)); render();
   },
   prevNew:function(){ ui.sheet = { k:'prevform' }; ui.sh = { titulo:'', detalle:'', salonId:'', freq:7, proxima: fechaInput(sod(now())) }; render(); },
   prevEdit:function(v){ var p = DB.preventivo[v]; if (!p) return; ui.sheet = { k:'prevform', id:v }; ui.sh = { titulo:p.titulo, detalle:p.detalle || '', salonId:p.salonId || '', freq:p.freq, proxima: fechaInput(p.proxima) }; render(); },

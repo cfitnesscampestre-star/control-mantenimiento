@@ -16,11 +16,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Al subir cambios, sube el número ?v= (y VERSION en sw.js) para que los celulares no usen archivos viejos -->
-<link rel="stylesheet" href="css/main.css?v=18">
-<link rel="stylesheet" href="css/glassmorphism.css?v=18">
-<link rel="stylesheet" href="css/mantenimiento.css?v=18">
-<link rel="stylesheet" href="css/app-mobile.css?v=18" media="(max-width: 899px)">
-<link rel="stylesheet" href="css/app-desktop.css?v=18" media="(min-width: 900px)">
+<link rel="stylesheet" href="css/main.css?v=19">
+<link rel="stylesheet" href="css/glassmorphism.css?v=19">
+<link rel="stylesheet" href="css/mantenimiento.css?v=19">
+<link rel="stylesheet" href="css/app-mobile.css?v=19" media="(max-width: 899px)">
+<link rel="stylesheet" href="css/app-desktop.css?v=19" media="(min-width: 900px)">
 </head>
 <body>
 <div id="app"></div>
@@ -29,11 +29,25 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="js/config.js?v=18"></script>
-<script src="js/qrcode.js?v=18"></script>
-<script src="js/inventario.js?v=18"></script>
-<script src="js/app.js?v=18"></script>
-<script src="js/informes.js?v=18"></script>
-<script>if('serviceWorker' in navigator){ window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); }); }</script>
+<script src="js/config.js?v=19"></script>
+<script src="js/qrcode.js?v=19"></script>
+<script src="js/inventario.js?v=19"></script>
+<script src="js/app.js?v=19"></script>
+<script src="js/informes.js?v=19"></script>
+<script>
+/* Versión nueva: el service worker se instala solo; cuando toma el control y la app ya estaba abierta, se avisa con "Recargar".
+   Se busca versión nueva al abrir, al volver a la app y cada 30 minutos. */
+if('serviceWorker' in navigator){
+  var cmHabiaSW = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){ if (cmHabiaSW && window.avisaVersion) window.avisaVersion(); cmHabiaSW = true; });
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      var busca = function(){ reg.update().catch(function(){}); };
+      document.addEventListener('visibilitychange', function(){ if (!document.hidden) busca(); });
+      setInterval(busca, 30 * 60000);
+    }).catch(function(){});
+  });
+}
+</script>
 </body>
 </html>
