@@ -642,7 +642,7 @@ function respaldoCard(){
 }
 
 /* ---------- hojas (ventana emergente, igual que en Gerencia) ---------- */
-function mHead(t){ return '<div class="sh-h"><b>' + esc(t) + '</b><button class="ibtn" data-a="close" aria-label="Cerrar">' + ic('x') + '</button></div>'; }
+function mHead(t){ return '<div class="sh-h"><b id="sh-t" tabindex="-1">' + esc(t) + '</b><button class="ibtn" data-a="close" aria-label="Cerrar">' + ic('x') + '</button></div>'; }
 function opcionesSalon(sel, vacio){
   return (vacio ? '<option value="">' + vacio + '</option>' : '') + lista('salones').map(function(s){ return '<option value="' + esc(s.id) + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.nombre) + ' · ' + esc(s.area) + '</option>'; }).join('');
 }
@@ -706,6 +706,7 @@ function sheetRep(){
     '<div class="rep ' + semaforo(r) + '" style="margin-bottom:14px"><div class="rep-h">' + pillEstado(r) + pillUrg(r) + '</div>' +
     '<span class="rep-d">' + esc(r.desc) + '</span><small>' + esc(repLugar(r)) + ' · ' + esc(quienReporta(r)) + (r.area ? ' · ' + esc(r.area) : '') + (r.clase ? ' · ' + esc(r.clase) : '') + ' · ' + hace(r.creado) + '</small>' +
     timerHTML(r) + '</div>' +
+    (abiertoPorError(r) ? '<div class="sub" style="margin:-6px 0 12px">¿Lo abriste por error? <button class="btn sm" data-a="repNoVisto">Regresarlo a “No visto”</button></div>' : '') +
     (!repEq(r) && r.equipoTxt ? '<div class="card" style="margin-bottom:14px"><b>“' + esc(r.equipoTxt) + '” no está en el catálogo</b>' +
       '<div class="sub" style="margin:2px 0 8px">Si es un equipo nuevo, dalo de alta: el reporte queda ligado a él y ya tendrá su QR. Si es algo general (una puerta, un barandal), déjalo así.</div>' +
       '<button class="btn sm" data-a="repAltaEq">Dar de alta en el catálogo</button></div>' : '') +
@@ -718,6 +719,16 @@ function sheetRep(){
         : '<div class="sub">Este reporte ya está resuelto. Se quita cuando ' + (r.origen === 'gerencia' ? 'el profesor' : 'el instructor') + ' lo elimine.</div>') :
       (esperaPz(r) ? '<div class="sub" style="margin-bottom:8px"><b>No se puede marcar resuelto mientras se espera la pieza.</b> Cuando llegue, toca “Ya llegó la pieza”.</div>' : '') +
       '<div class="btns"><button class="btn" data-a="saveRep">Guardar nota</button><button class="btn primary" data-a="resolveRep"' + (esperaPz(r) ? ' disabled' : '') + '>Marcar resuelto</button></div>');
+}
+function sheetSalForm(){
+  var s = DB.salones[ui.sheet.id]; if (!s) return '';
+  var areas = lista('salones').map(function(x){ return x.area; }).filter(function(a, i, ar){ return a && ar.indexOf(a) === i; });
+  return mHead('Renombrar salón') +
+    '<div class="sub">El nombre debe ser igual al del salón en Control Fitness (o al “lugar” de las clases en Gerencia), para que a cada instructor le salgan sus equipos.</div>' +
+    '<label class="f"><span>Nombre del salón o zona</span><input data-f="nombre" value="' + esc(ui.sh.nombre) + '"></label>' +
+    '<label class="f"><span>Área</span><input data-f="area" list="areas2" value="' + esc(ui.sh.area) + '"></label>' +
+    '<datalist id="areas2">' + areas.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>' +
+    '<div class="btns"><button class="btn" data-a="salVolver">Volver</button><button class="btn primary" data-a="salSave">Guardar</button></div>';
 }
 function sheetNuevo(){
   var sh = ui.sh, sals = lista('salones').sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es', { numeric:true }); });
@@ -939,7 +950,7 @@ var TITULOS = {
   reportes: ['Reportes', 'Reportes de equipo de los instructores'],
   preventivo: ['Hoy te toca', 'Revisiones programadas'],
   equipos: ['Equipos', 'Catálogo por salón'],
-  gerencia: ['Reportes gerencia', 'Lo que ve Control Gerencia · solo lectura']
+  gerencia: ['Reportes gerencia', 'Lo que ve Control Gerencia · informes y respaldo']
 };
 function cloud(){
   return fbError ? { cls:'bad', txt:'Sin conexión con la base' } : online ? { cls:'on', txt:'Conectado' } : { cls:'warn', txt:'Sin internet' };
@@ -1003,6 +1014,11 @@ function render(){
   if (ready) RESTAURA = null;
   var car0 = document.querySelector('.carr'), sl = car0 && !ui.reset ? car0.scrollLeft : 0, sy = window.pageYOffset || 0;
   var sh0 = document.querySelector('#modal .sheet'), ss = sh0 ? sh0.scrollTop : 0; ui.reset = false;
+  var fo = document.activeElement, foSel = null;                      // el foco dentro de la ventana se conserva al redibujar
+  if (fo && fo.closest && fo.closest('#modal')) {
+    foSel = fo.id ? '#' + fo.id : fo.getAttribute('data-a') ? '[data-a="' + fo.getAttribute('data-a') + '"]' + (fo.getAttribute('data-v') != null ? '[data-v="' + fo.getAttribute('data-v').replace(/["\\]/g, '') + '"]' : '')
+      : fo.getAttribute('data-f') ? '[data-f="' + fo.getAttribute('data-f') + '"]' : null;
+  }
   if (EQ_LINK && DB.equipos) {              /* abierto desde un QR: mostrar la ficha de ese equipo */
     var qid = ''; try { qid = decodeURIComponent(EQ_LINK); } catch(e){ qid = EQ_LINK; }
     if (DB.equipos[qid]) { ui.tab = 'equipos'; ui.sheet = { k:'eq', id:qid }; }
@@ -1014,14 +1030,32 @@ function render(){
     : !online ? '<div class="vinc off"><b>Sin internet</b><span>Los cambios se envían al volver la señal. No cierres la app hasta entonces.</span></div>' : '';
   document.getElementById('app').innerHTML = '<div class="app">' + sidebar() + '<div class="content">' + topbar(TITULOS[t]) + '<main class="main">' + verBanner + errBanner + body + '</main></div>' + bottomnav() + '</div>';
   var m = document.getElementById('modal'), k = ui.sheet && ui.sheet.k, html = '';
-  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'prevEq' ? sheetPrevEq() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : k === 'nuevo' ? sheetNuevo() : sheetPrevForm();
-  if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
+  if (k) html = k === 'rep' ? sheetRep() : k === 'posp' ? sheetPosp() : k === 'eq' ? sheetEq() : k === 'eqform' ? sheetEqForm() : k === 'eqqr' ? sheetQR() : k === 'prevEq' ? sheetPrevEq() : k === 'sal' ? sheetSalones() : k === 'imp' ? sheetImp() : k === 'cal' ? sheetCal() : k === 'infdoc' ? sheetInfDoc() : k === 'nombre' ? sheetNombre() : k === 'nuevo' ? sheetNuevo() : k === 'salform' ? sheetSalForm() : sheetPrevForm();
+  if (html) { m.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-t">' + html + '</div>' + (ui.zoom ? '<div class="zoom" data-a="zoomCierra"><img src="' + ui.zoom + '" alt=""></div>' : ''); m.hidden = false; document.body.style.overflow = 'hidden'; }
   else { m.hidden = true; m.innerHTML = ''; document.body.style.overflow = ''; }
   if (k === 'infdoc') infMonta();
+  /* foco: al abrir una ventana va a su título (lectores de pantalla y teclado); al cerrarla regresa al botón que la abrió */
+  var clave = k ? k + '|' + (ui.sheet.id || '') : '';
+  if (clave && clave !== ui.shClave) { var tt = document.getElementById('sh-t'); if (tt) try { tt.focus({ preventScroll:true }); } catch(e){ tt.focus(); } }
+  else if (!clave && ui.shClave && ui.abridor) {
+    var sel = '[data-a="' + ui.abridor.a + '"]' + (ui.abridor.v != null ? '[data-v="' + String(ui.abridor.v).replace(/["\\]/g, '') + '"]' : '');
+    var ab = null; try { ab = document.querySelector('#app ' + sel); } catch(e){}
+    if (ab) try { ab.focus({ preventScroll:true }); } catch(e){ ab.focus(); }
+    ui.abridor = null;
+  }
+  else if (clave && foSel) { var fx = null; try { fx = document.querySelector('#modal ' + foSel); } catch(e){} if (fx) try { fx.focus({ preventScroll:true }); } catch(e){ fx.focus(); } }
+  ui.shClave = clave;
   var car1 = document.querySelector('.carr'); if (car1) { car1.scrollLeft = sl; carrN(); }
   var sh1 = document.querySelector('#modal .sheet'); if (sh1 && ss) sh1.scrollTop = ss;
   if (sy) window.scrollTo(0, sy);
   guardaSheet();
+}
+/* Al abrir un reporte pasa solo a "en proceso". Si fue un toque por error, el mismo técnico lo puede regresar a "No visto"
+   durante 15 minutos, mientras no haya escrito nada, pedido piezas ni tomado fotos. */
+function abiertoPorError(r){
+  if (!r || r.estado !== 'atencion' || !r.visto || now() - r.visto > 15 * 6e4) return false;
+  if (r.diag || pzEntradas(r).length || r.fotoAntes || r.fotoDespues) return false;
+  return usuario ? r.tecnicoId === usuario.uid : r.tecnico === nombreTec();
 }
 function repCerrado(){ toast('El instructor ya cerró este reporte; no se guardó.'); render(); }
 /* Hay versión nueva de la app (index.html avisa cuando el service worker nuevo toma el control) */
@@ -1151,6 +1185,11 @@ var A = {
       origen:'mantenimiento', prof: nombreTec(), profId: 'mant-' + (usuario ? usuario.uid : 'tecnico'), otroLugar:false });
     ui.sheet = null; confirma(guarda('reportes/' + id, rep), 'Reporte guardado. Queda en la lista para quien lo atienda.'); render();
   },
+  repNoVisto:function(){
+    var id = ui.sheet.id, r = DB.reportes[id]; if (!r) return repCerrado();
+    if (!abiertoPorError(r)) return toast('Ya no se puede regresar: el reporte ya tiene trabajo registrado.');
+    ui.sheet = null; confirma(actualiza('reportes/' + id, { estado:'nuevo', visto:null, tecnico:null, tecnicoId:null }), 'Listo: el reporte volvió a “No visto”.'); render();
+  },
   repQuita:function(){
     var id = ui.sheet.id, r = DB.reportes[id]; if (!r) return repCerrado();
     if (!confirm('¿Quitar este reporte de la lista? Queda guardado en el historial.')) return;
@@ -1254,12 +1293,14 @@ var A = {
     guarda('salones/' + nuevoId('salones'), { nombre:s.nombre.trim(), area:s.area.trim() });
     ui.sh = { nombre:'', area:'' }; ui.shCambio = false; render(); toast('Salón agregado');
   },
-  salEdit:function(v){
-    var s = DB.salones[v]; if (!s) return;
-    var n = prompt('Nombre del salón:', s.nombre); if (n === null || !n.trim()) return;
-    var a = prompt('Área del salón:', s.area); if (a === null || !a.trim()) return;
-    actualiza('salones/' + v, { nombre:n.trim(), area:a.trim() }); toast('Salón actualizado');
+  salEdit:function(v){ var s = DB.salones[v]; if (!s) return; ui.sheet = { k:'salform', id:v }; ui.shCambio = false; ui.sh = { nombre:s.nombre || '', area:s.area || '' }; render(); },
+  salSave:function(){
+    var id = ui.sheet.id, n = (ui.sh.nombre || '').trim(), a = (ui.sh.area || '').trim(); if (!DB.salones[id]) return;
+    if (!n) return toast('Escribe el nombre del salón'); if (!a) return toast('Escribe el área del salón');
+    confirma(actualiza('salones/' + id, { nombre:n, area:a }), 'Salón actualizado');
+    ui.sheet = { k:'sal' }; ui.shCambio = false; ui.sh = { nombre:'', area:'' }; render();
   },
+  salVolver:function(){ ui.sheet = { k:'sal' }; ui.shCambio = false; ui.sh = { nombre:'', area:'' }; render(); },
   salDel:function(v){
     if (lista('equipos').some(function(e){ return e.salonId === v; })) return toast('Este salón tiene equipos. Cámbialos de salón antes de eliminarlo.');
     if (!confirm('¿Eliminar este salón?')) return; guarda('salones/' + v, null); toast('Salón eliminado');
@@ -1292,6 +1333,7 @@ var A = {
 document.addEventListener('click', function(e){
   if (e.target.id === 'modal') { A.close(); return; }
   var b = e.target.closest('[data-a]'); if (!b) return;
+  if (!ui.sheet && b.closest('#app')) ui.abridor = { a: b.getAttribute('data-a'), v: b.getAttribute('data-v') };   // para regresar el foco al cerrar
   var f = A[b.getAttribute('data-a')]; if (f) f(b.getAttribute('data-v'));
 });
 document.addEventListener('scroll', function(e){ if (e.target && e.target.classList && e.target.classList.contains('carr')) carrN(); }, true);
@@ -1302,6 +1344,13 @@ document.addEventListener('mouseover', function(e){ carHover = !!(e.target.close
 document.addEventListener('keydown', function(e){
   if (e.key === 'Enter' && e.target && e.target.id === 'lg_p') { A.entrar(); return; }
   if (e.key === 'Escape') { if (ui.zoom) A.zoomCierra(); else if (ui.sheet) A.close(); }
+  if (e.key === 'Tab' && ui.sheet) {                                  // el tabulador no se sale de la ventana abierta
+    var fs = [].slice.call(document.querySelectorAll('#modal .sheet button:not([disabled]), #modal .sheet input:not([disabled]):not([type=hidden]), #modal .sheet select, #modal .sheet textarea, #modal .sheet [tabindex="0"]')).filter(function(x){ return x.offsetParent !== null; });
+    if (!fs.length) return;
+    var pri = fs[0], ult = fs[fs.length - 1], act = document.activeElement, dentro = act && act.closest && act.closest('#modal .sheet');
+    if (e.shiftKey && (act === pri || !dentro)) { e.preventDefault(); ult.focus(); }
+    else if (!e.shiftKey && (act === ult || !dentro)) { e.preventDefault(); pri.focus(); }
+  }
 });
 document.addEventListener('change', function(e){
   var t = e.target, tipo = t && t.getAttribute && t.getAttribute('data-foto');

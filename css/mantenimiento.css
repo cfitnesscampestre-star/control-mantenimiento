@@ -143,3 +143,9 @@ button.eq:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(8,34,40,.
 .eq .inf .pill{white-space:normal;text-align:left;line-height:1.25}
 
 .btn[disabled]{opacity:.45;cursor:not-allowed;filter:grayscale(.4)}
+
+/* Accesibilidad (v20): áreas táctiles de al menos 44 px y foco visible en el título de las ventanas */
+.chip,.ch2-cal{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+.ibtn{width:44px;height:44px}
+.sh-h b[tabindex]:focus{outline:none}
+.sh-h b[tabindex]:focus-visible{outline:2px solid var(--b3);outline-offset:3px;border-radius:4px}
